@@ -1,0 +1,10 @@
+BEMU80
+======
+
+Bemu80 is a Z80 emulator written in C for Linux. It's currently almost fully functional, 
+but expect some features not to work and the code to be a mess. More info coming soon.
+
+License
+=======
+
+Bemu80 is released under the GPL v2 license.
