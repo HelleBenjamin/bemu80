@@ -4,6 +4,7 @@
 #ifndef BEMU80_H
 #define BEMU80_H
 
+#include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,11 +53,19 @@
 #define REG_H 0x04
 #define REG_L 0x05
 
-// GP Reg pairs
+// GP Reg pairs(unofficial)
 #define REG_BC 0x00
 #define REG_DE 0x02
 #define REG_HL 0x04
 #define REG_AF 0x06
+#define REG_IX 0x08
+#define REG_IY 0x0A
+
+/* GP Regpairs(official)*/
+#define REGPAIR_BC 0x00
+#define REGPAIR_DE 0x01
+#define REGPAIR_HL 0x02
+#define REGPAIR_SP 0x03
 
 
 typedef struct {
@@ -70,8 +79,6 @@ typedef struct {
   uint8_t i, r; // Interrupt, dram refresh
   uint8_t im; // Interrupt mode
   bool iff1, iff2;
-  // Memory
-  uint8_t memory[MEM_SIZE];
   bool halt;
 } VirtZ80;
 
@@ -103,19 +110,11 @@ void stackTrace(VirtZ80 *cpu, int depth);
 void MainInstruction(VirtZ80 *cpu);
 void MiscInstruction(VirtZ80 *cpu);
 void BitInstruction(VirtZ80 *cpu);
-void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg);
+void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg, uint8_t index_reg_prefix);
 
 /*DEBUG STUFF*/
 void draw_registers(VirtZ80 *cpu);
 void draw_memory(VirtZ80 *cpu);
 
-char main_instructions[][0xFF] = {
-  {"nop"},
-  {"ld bc, 0x%04x"},
-  {"ld (bc), a"},
-  {"inc bc"},
-  {"inc b"},
-  {"dec b"},
-};
 
 #endif
