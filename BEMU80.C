@@ -128,14 +128,17 @@ uint16_t getShadowRegpair(VirtZ80 *cpu, uint8_t regpair) {
   return value;
 }
 
-void updateFlags8(VirtZ80 *cpu, uint16_t alu_result) {
+void update_flags8(VirtZ80 *cpu, uint16_t alu_result, uint8_t flags) {
+  
+}
+/*void updateFlags8(VirtZ80 *cpu, uint16_t alu_result) {
   cpu->flags = (cpu->flags & ~(FLAG_Z | FLAG_S | FLAG_C | FLAG_H | FLAG_P)) |
             (alu_result == 0 ? FLAG_Z : 0x00) |
             (alu_result & 0x80 ? FLAG_S : 0x00) |
             (alu_result & 0x10 ? FLAG_H : 0x00) |
             (alu_result & 0x100 ? FLAG_C : 0x00) |
             ((alu_result & 0x0F) + (cpu->flags & FLAG_C ? 1 : 0) > 0xF ? FLAG_P : 0x00);
-}
+}*/
 
 void updateFlags8Rotate(VirtZ80 *cpu, uint16_t alu_result) {
   cpu->flags = (cpu->flags & ~(FLAG_Z | FLAG_S | FLAG_H | FLAG_P)) |
@@ -230,7 +233,121 @@ uint8_t InputHandler(uint8_t port) {
   return input;
 }
 
-void alu8(VirtZ80 *cpu, uint8_t dest, uint8_t src, bool is_imm, uint8_t ins) {
+// New alu8
+void alu8(VirtZ80 *cpu, uint8_t *dest, uint8_t src, uint8_t ins) {
+  int16_t result = 0;
+  uint8_t dest8 = *dest;
+  uint8_t source8 = src;
+  switch (ins) {
+    case ALU_OP_ADD:
+      result = dest8 + source8;
+      update_flags8(cpu, result, 0xFF);
+      setFlag(cpu, FLAG_N, 0); /* Reset N flag */
+      break;
+    case ALU_OP_ADC:
+      result = dest8 + source8 + getFlag(cpu, FLAG_C);
+      update_flags8(cpu, result, 0xFF);
+      setFlag(cpu, FLAG_N, 0);
+      break;
+    case ALU_OP_SUB:
+      result = dest8 - source8;
+      update_flags8(cpu, result, 0xFF);
+      setFlag(cpu, FLAG_N, 1); /* Set N flag */
+      break;
+    case ALU_OP_SBC:
+      result = dest8 - source8 - getFlag(cpu, FLAG_C);
+      update_flags8(cpu, result, 0xFF);
+      setFlag(cpu, FLAG_N, 1);
+      break;
+    case ALU_OP_AND:
+      result = dest8 & source8;
+      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S);
+      setFlag(cpu, FLAG_C | FLAG_H, 0);
+      setFlag(cpu, FLAG_H, 1);
+      break;
+    case ALU_OP_OR:
+      result = dest8 | source8;
+      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S);
+      setFlag(cpu, FLAG_C | FLAG_N | FLAG_H, 0);
+      break;
+    case ALU_OP_XOR:
+      result = dest8 ^ source8;
+      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S);
+      setFlag(cpu, FLAG_C | FLAG_N | FLAG_H, 0);
+      break;
+    case ALU_OP_CP:
+      result = dest8 - source8;
+      update_flags8(cpu, result, 0xFF);
+      setFlag(cpu, FLAG_N, 1);
+      return;
+    case ALU_OP_INC:
+      result = dest8 + 1;
+      break;
+    case ALU_OP_DEC:
+      result = dest8 - 1;
+      break;
+
+    case ALU_OP_RLC:
+      result = (dest8<< 1) | (dest8 >> 7);
+      if (dest8 & 0x80) cpu->flags |= FLAG_C;
+      else cpu->flags &= ~FLAG_C;
+      break;
+    case ALU_OP_RRC:
+      result = (dest8 >> 1) | (dest8 << 7);
+      if (dest8 & 0x01) cpu->flags |= FLAG_C;
+      else cpu->flags &= ~FLAG_C;
+      break;
+    case ALU_OP_RL:
+    {
+      uint8_t carry = getFlag(cpu, FLAG_C);
+      result = (dest8 << 1) | carry;
+      if (dest8& 0x80) cpu->flags |= FLAG_C;
+      else cpu->flags &= ~FLAG_C;
+      break;
+    }
+    case ALU_OP_RR:
+    {
+      uint8_t carry = getFlag(cpu, FLAG_C);
+      result = (dest8 >> 1) | (carry << 7);
+      if (dest8 & 0x01) cpu->flags |= FLAG_C;
+      else cpu->flags &= ~FLAG_C;
+      break;
+    }
+    case ALU_OP_SLA:
+      result = (dest8 << 1);
+      if (dest8 & 0x80) cpu->flags |= FLAG_C;
+      else cpu->flags &= ~FLAG_C;
+      break;
+    case ALU_OP_SRA:
+      result = (dest8 >> 1) | (dest8 & 0x80);
+      if (dest8 & 0x01) cpu->flags |= FLAG_C;
+      else cpu->flags &= ~FLAG_C;
+      break;
+    case ALU_OP_SRL:
+      result = (dest8 >> 1);
+      if (dest8 & 0x01) cpu->flags |= FLAG_C;
+      else cpu->flags &= ~FLAG_C;
+      break;
+    case ALU_OP_BIT:
+      result = dest8 & (1 << source8);
+      updateFlags8(cpu, result);
+      return;
+    case ALU_OP_RES:
+      result = dest8 & ~(1 << source8);
+      break;
+    case ALU_OP_SET:
+      result = dest8| (1 << source8);
+      break;
+
+    default:
+      return;
+  }
+
+  *dest = (result & 0xFF);
+}
+  
+
+/*void alu8(VirtZ80 *cpu, uint8_t dest, uint8_t src, bool is_imm, uint8_t ins) {
   int16_t result = 0;
   uint8_t dest8 = cpu->regs[dest];
   uint8_t source8 = 0;
@@ -348,7 +465,7 @@ void alu8(VirtZ80 *cpu, uint8_t dest, uint8_t src, bool is_imm, uint8_t ins) {
 
   updateFlags8(cpu, result);
   cpu ->regs[dest] = (result & 0xFF);
-}
+}*/
 
 // TODO: Fix all alu flags
 
@@ -438,10 +555,12 @@ void MainInstruction(VirtZ80 *cpu) {
       alu16(cpu, REG_BC, REG_BC, ALU_OP_INC);
       break;
     case 0x04: // INC B
-      alu8(cpu, REG_B, REG_B, false, ALU_OP_INC);
+      //alu8(cpu, REG_B, REG_B, false, ALU_OP_INC);
+      update_flags8(cpu, ++cpu->regs[REG_B], 0xFE);
       break;
     case 0x05: // DEC B
-      alu8(cpu, REG_B, REG_B, false, ALU_OP_DEC);
+      //alu8(cpu, REG_B, REG_B, false, ALU_OP_DEC);
+      update_flags8(cpu, --cpu->regs[REG_B], 0xFE);
       break;
     case 0x06: // LD B, n
       cpu->regs[REG_B] = fByte(cpu);
