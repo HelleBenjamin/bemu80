@@ -130,12 +130,12 @@ uint16_t getShadowRegpair(VirtZ80 *cpu, uint8_t regpair) {
   return value;
 }
 
-void update_flags8(VirtZ80 *cpu, uint16_t alu_result, uint8_t flags, bool rotation) {
+void update_flags8(VirtZ80 *cpu, uint16_t alu_result, uint8_t flags, bool pv) {
   cpu->flags = (cpu->flags & ~(flags)) |
             (alu_result == 0 ? FLAG_Z : 0x00) |
             (alu_result & 0x80 ? FLAG_S : 0x00) |
             (alu_result & 0x10 ? FLAG_H : 0x00) |
-            (rotation ? ((alu_result & 0x01) == 0 ? FLAG_P : 0x00) : (alu_result & 0x100 ? FLAG_C : 0x00)) | /* maybe working?*/
+            (pv ? ((alu_result & 0x01) == 0 ? FLAG_P : 0x00) : (alu_result & 0x100 ? FLAG_C : 0x00)) | /* maybe working?*/
             ((alu_result & 0x0F) + (cpu->flags & FLAG_C ? 1 : 0) > 0xF ? FLAG_P : 0x00);
 }
 
@@ -199,18 +199,18 @@ void alu8(VirtZ80 *cpu, uint8_t *dest, uint8_t src, uint8_t ins) {
       break;
     case ALU_OP_AND:
       result = dest8 & source8;
-      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 0);
+      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 1); /* use P/v as parity */
       setFlag(cpu, FLAG_C | FLAG_H, 0);
       setFlag(cpu, FLAG_H, 1);
       break;
     case ALU_OP_OR:
       result = dest8 | source8;
-      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 0);
+      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 1);
       setFlag(cpu, FLAG_C | FLAG_N | FLAG_H, 0);
       break;
     case ALU_OP_XOR:
       result = dest8 ^ source8;
-      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 0);
+      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 1);
       setFlag(cpu, FLAG_C | FLAG_N | FLAG_H, 0);
       break;
     case ALU_OP_CP:
@@ -662,6 +662,7 @@ void MainInstruction(VirtZ80 *cpu) {
 
     case 0x76: // HALT
       cpu->halt = true;
+      cpu->pc--; /* Don't increment PC*/
       break;
 
     case 0x78: // LD A, reg
@@ -1967,8 +1968,6 @@ int main(int argc, char **argv) {
   free(src_hex);
 
   printf("Loaded %d bytes\n", i);
-
-  cpu.sp = 0xfffe;
 
   if (printmem) printMemory(&cpu);
 
