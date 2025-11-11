@@ -2,3 +2,5 @@ bemu80
 test.bin
 test.o
 testdis.asm
+test.asm
+a.bin
