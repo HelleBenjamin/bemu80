@@ -16,33 +16,36 @@
 #define MEM_SIZE 0xFFFF // 64k
 #define STD_PORT 0x81
 
-#define FLAG_C 0x01
-#define FLAG_N 0x02
-#define FLAG_P 0x04
-#define FLAG_H 0x20
-#define FLAG_Z 0x40
-#define FLAG_S 0x80
+#define FLAG_C  0x01
+#define FLAG_N  0x02
+#define FLAG_PV 0x04
+#define FLAG_X  0x08 /* undocumented */
+#define FLAG_H  0x10
+#define FLAG_Y  0x20 /* undocumented */
+#define FLAG_Z  0x40
+#define FLAG_S  0x80
 
-#define ALU_OP_ADD 0x00
-#define ALU_OP_ADC 0x01
-#define ALU_OP_SUB 0x02
-#define ALU_OP_SBC 0x03
-#define ALU_OP_AND 0x04
-#define ALU_OP_OR 0x05
-#define ALU_OP_XOR 0x06
-#define ALU_OP_CP 0x07
-#define ALU_OP_INC 0x08
-#define ALU_OP_DEC 0x09
-#define ALU_OP_RLC 0x0A
-#define ALU_OP_RL 0x0B
-#define ALU_OP_RRC 0x0C
-#define ALU_OP_RR 0x0D
-#define ALU_OP_SLA 0x0E
-#define ALU_OP_SRA 0x0F
-#define ALU_OP_SRL 0x10
-#define ALU_OP_BIT 0x11
-#define ALU_OP_RES 0x12
-#define ALU_OP_SET 0x13
+#define ALU_OP_ADD  0x00
+#define ALU_OP_ADC  0x01
+#define ALU_OP_SUB  0x02
+#define ALU_OP_SBC  0x03
+#define ALU_OP_AND  0x04
+#define ALU_OP_OR   0x05
+#define ALU_OP_XOR  0x06
+#define ALU_OP_CP   0x07
+#define ALU_OP_INC  0x08
+#define ALU_OP_DEC  0x09
+#define ALU_OP_RLC  0x0A
+#define ALU_OP_RL   0x0B
+#define ALU_OP_RRC  0x0C
+#define ALU_OP_RR   0x0D
+#define ALU_OP_SLA  0x0E
+#define ALU_OP_SLL  0x0F
+#define ALU_OP_SRA  0x10
+#define ALU_OP_SRL  0x11
+#define ALU_OP_BIT  0x12
+#define ALU_OP_RES  0x13
+#define ALU_OP_SET  0x14
 
 // GP registers
 #define REG_A 0x07

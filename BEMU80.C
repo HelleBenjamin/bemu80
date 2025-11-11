@@ -2,9 +2,11 @@
 /Copyright (c) 2025 Benjamin Helle
 */ 
 #include "BEMU80.H"
+#include <cstdint>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <sys/types.h>
 
 bool print_ins = false;
 
@@ -130,22 +132,59 @@ uint16_t getShadowRegpair(VirtZ80 *cpu, uint8_t regpair) {
   return value;
 }
 
-void update_flags8(VirtZ80 *cpu, uint16_t alu_result, uint8_t flags, bool pv) {
-  cpu->flags = (cpu->flags & ~(flags)) |
-            (alu_result == 0 ? FLAG_Z : 0x00) |
-            (alu_result & 0x80 ? FLAG_S : 0x00) |
-            (alu_result & 0x10 ? FLAG_H : 0x00) |
-            (pv ? ((alu_result & 0x01) == 0 ? FLAG_P : 0x00) : (alu_result & 0x100 ? FLAG_C : 0x00)) | /* maybe working?*/
-            ((alu_result & 0x0F) + (cpu->flags & FLAG_C ? 1 : 0) > 0xF ? FLAG_P : 0x00);
+void update_flags8(VirtZ80 *cpu, uint16_t result, uint8_t flags, bool pv, bool is_sub) {
+  uint8_t newflags = 0;
+
+  if ((result & 0x0100) && (flags & FLAG_C)) newflags |= FLAG_C;
+  if (is_sub) newflags |= FLAG_N;
+  if ((result & 0x8) && (flags & FLAG_H)) newflags |= FLAG_H;
+  if (pv && (flags & FLAG_PV)) { /* Parity check */
+    uint8_t parity = __builtin_parity(result & 0xFF);
+    /*uint8_t parity = (result & 0xFF);
+    parity ^= parity >> 4;
+    parity ^= parity >> 2;
+    parity ^= parity >> 1;
+    if (parity & 1) newflags |= FLAG_PV;*/
+    if (!parity) newflags |= FLAG_PV;
+  } else if (!pv && (flags & FLAG_PV)) { /* Overflow check */
+    if (result > 0xFF) newflags |= FLAG_PV;
+  }
+  if ((result & 0x80) && (flags & FLAG_S)) newflags |= FLAG_S;
+
+
+  /*Undocumented flags Y,X
+    Y = copy of bit 3 of the result
+    X = copy of bit 5 of the result
+  */
+
+  if ((result & 0x08)) newflags |= FLAG_Y;
+  if ((result & 0x20)) newflags |= FLAG_X;
+
+  cpu->flags = (cpu->flags & ~(flags)) | newflags;
+
+  //printf("update_flags8 result: %02x flags: %02x newflags: %02x\n", result, cpu->flags, newflags);
 }
 
-void update_flags16(VirtZ80 *cpu, uint32_t alu_result, uint8_t flags) {
-  cpu->flags = (cpu->flags & ~(flags)) |
-            (alu_result == 0 ? FLAG_Z : 0x00) |
-            (alu_result & 0x8000 ? FLAG_S : 0x00) |
-            (alu_result & 0x8000 ? FLAG_C : 0x00) |
-            (alu_result & 0x800 ? FLAG_H : 0x00) |
-            (alu_result < -32768 || alu_result > 32767 ? FLAG_P : 0x00);
+void update_flags16(VirtZ80 *cpu, uint32_t result, uint8_t flags, bool is_sub) {
+  uint8_t newflags = 0;
+
+  if ((result & 0x10000) && (flags & FLAG_C)) newflags |= FLAG_C;
+  if (is_sub) newflags |= FLAG_N;
+  if ((result & 0x8) && (flags & FLAG_H)) newflags |= FLAG_H;
+  if ((result > 0xFFFF) && (flags & FLAG_PV)) newflags |= FLAG_PV;
+  if ((result & 0x8000) && (flags & FLAG_S)) newflags |= FLAG_S;
+
+
+  /*Undocumented flags Y,X
+    Y = copy of bit 3 of the result(high byte)
+    X = copy of bit 5 of the result(high byte)
+  */
+
+  if ((result & (0x08 << 8))) newflags |= FLAG_Y;
+  if ((result & (0x20 << 8))) newflags |= FLAG_X;
+
+  cpu->flags = (cpu->flags & ~(flags)) | newflags;
+
 }
 
 uint8_t getFlag(VirtZ80 *cpu, uint8_t flag) {
@@ -179,118 +218,144 @@ void alu8(VirtZ80 *cpu, uint8_t *dest, uint8_t src, uint8_t ins) {
   switch (ins) {
     case ALU_OP_ADD:
       result = dest8 + source8;
-      update_flags8(cpu, result, 0xFF, 0);
-      setFlag(cpu, FLAG_N, 0); /* Reset N flag */
+      update_flags8(cpu, result, 0xFF, 0,0);
+      if (((dest8 & 0x0F) + (source8 & 0x0F)) & 0x10) { /* check this if right flag*/
+        setFlag(cpu, FLAG_H, 1);
+      }
       break;
     case ALU_OP_ADC:
       result = dest8 + source8 + getFlag(cpu, FLAG_C);
-      update_flags8(cpu, result, 0xFF, 0);
-      setFlag(cpu, FLAG_N, 0);
+      update_flags8(cpu, result, 0xFF, 0,0);
+      if (((dest8 & 0x0F) + (source8 & 0x0F)) & 0x10) {
+        setFlag(cpu, FLAG_H, 1);
+      }
       break;
     case ALU_OP_SUB:
       result = dest8 - source8;
-      update_flags8(cpu, result, 0xFF, 0);
-      setFlag(cpu, FLAG_N, 1); /* Set N flag */
+      update_flags8(cpu, result, 0xFF, 0,1);
+      if ((dest8 & 0x0F) < (source8 & 0x0F)) {
+        setFlag(cpu, FLAG_H, 1);
+      }
       break;
     case ALU_OP_SBC:
       result = dest8 - source8 - getFlag(cpu, FLAG_C);
-      update_flags8(cpu, result, 0xFF, 0);
-      setFlag(cpu, FLAG_N, 1);
+      update_flags8(cpu, result, 0xFF, 0,1);
+      if ((dest8 & 0x0F) < (source8 & 0x0F)) {
+        setFlag(cpu, FLAG_H, 1);
+      }
       break;
     case ALU_OP_AND:
       result = dest8 & source8;
-      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 1); /* use P/v as parity */
+      update_flags8(cpu, result, FLAG_PV | FLAG_Z | FLAG_S, 1,0); /* use P/v as parity */
       setFlag(cpu, FLAG_C | FLAG_H, 0);
       setFlag(cpu, FLAG_H, 1);
       break;
     case ALU_OP_OR:
       result = dest8 | source8;
-      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 1);
+      update_flags8(cpu, result, FLAG_PV | FLAG_Z | FLAG_S, 1,0);
       setFlag(cpu, FLAG_C | FLAG_N | FLAG_H, 0);
       break;
     case ALU_OP_XOR:
       result = dest8 ^ source8;
-      update_flags8(cpu, result, FLAG_P | FLAG_Z | FLAG_S, 1);
+      update_flags8(cpu, result, FLAG_PV | FLAG_Z | FLAG_S, 1,0);
       setFlag(cpu, FLAG_C | FLAG_N | FLAG_H, 0);
       break;
     case ALU_OP_CP:
       result = dest8 - source8;
-      update_flags8(cpu, result, 0xFF, 0);
-      setFlag(cpu, FLAG_N, 1);
+      update_flags8(cpu, result, FLAG_C | FLAG_H | FLAG_Z | FLAG_S, 0,1);
+      if ((dest8 & 0x0F) < (source8 & 0x0F)) { /* Need to manually set H flag */
+        setFlag(cpu, FLAG_H, 1);
+      }
       return;
-    case ALU_OP_INC:
+    case ALU_OP_INC: {
+      bool set_overflow = 0;
+      if (dest8 == 0x7F) set_overflow = 1;
       result = dest8 + 1;
-      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_H | FLAG_P, 0); /* make P/V more accurate? */
-      setFlag(cpu, FLAG_N, 0);
+      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_H, 0,0); /* make P/V more accurate? */
+      if (((dest8 & 0x0F) + (source8 & 0x0F)) & 0x10) {
+        setFlag(cpu, FLAG_H, 1);
+      }
+      setFlag(cpu, FLAG_PV, set_overflow);
       break;
-    case ALU_OP_DEC:
-      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_H | FLAG_P, 0);
-      setFlag(cpu, FLAG_N, 0);
+    }
+    case ALU_OP_DEC: {
+      bool set_overflow = 0;
+      if (dest8 == 0x80) set_overflow = 1;
       result = dest8 - 1;
+      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_H | FLAG_PV, 0,1);
+      if ((dest8 & 0x0F) < (source8 & 0x0F)) { /* Need to manually set H flag */
+        setFlag(cpu, FLAG_H, 1);
+      }
+      setFlag(cpu, FLAG_PV, set_overflow);
       break;
-
+    }
     case ALU_OP_RLC:
       result = (dest8<< 1) | (dest8 >> 7);
-      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_P, 1);
-      setFlag(cpu, FLAG_H | FLAG_N, 0);
-      if (dest8 & 0x80) cpu->flags |= FLAG_C;
-      else cpu->flags &= ~FLAG_C;
+      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_PV | FLAG_C, 1,0);
+      /* carry check correct? */
       break;
     case ALU_OP_RRC:
       result = (dest8 >> 1) | (dest8 << 7);
-      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_P, 1);
-      setFlag(cpu, FLAG_H | FLAG_N, 0);
-      if (dest8 & 0x01) cpu->flags |= FLAG_C;
-      else cpu->flags &= ~FLAG_C;
+      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_PV, 1,0);
+      setFlag(cpu, FLAG_C, dest8 & 0x01);
       break;
     case ALU_OP_RL:
-    {
-      uint8_t carry = getFlag(cpu, FLAG_C);
-      result = (dest8 << 1) | carry;
-      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_P, 1);
-      setFlag(cpu, FLAG_H | FLAG_N, 0);
-      if (dest8& 0x80) cpu->flags |= FLAG_C;
-      else cpu->flags &= ~FLAG_C;
-      break;
-    }
+      {
+        result = (dest8 << 1) | (cpu->flags & FLAG_C);
+        update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_PV, 1,0);
+        if (result & 0x100) setFlag(cpu, FLAG_C, 1); else setFlag(cpu, FLAG_C, 0);
+        break;
+      }
     case ALU_OP_RR:
-    {
-      uint8_t carry = getFlag(cpu, FLAG_C);
-      result = (dest8 >> 1) | (carry << 7);
-      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_P, 1);
-      setFlag(cpu, FLAG_H | FLAG_N, 0);
-      if (dest8 & 0x01) cpu->flags |= FLAG_C;
-      else cpu->flags &= ~FLAG_C;
-      break;
-    }
+      {
+        result = (dest8 >> 1) | ((cpu->flags & FLAG_C) << 7);
+        update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_PV, 1,0);
+        setFlag(cpu, FLAG_C, dest8 & 0x01);
+        break;
+      }
     case ALU_OP_SLA:
-      result = (dest8 << 1);
-      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_P, 1);
-      setFlag(cpu, FLAG_H | FLAG_N, 0);
-      if (dest8 & 0x80) cpu->flags |= FLAG_C;
-      else cpu->flags &= ~FLAG_C;
-      break;
+      {
+        result = (dest8 << 1) | (0 >> 7);
+        update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_PV, 1,0);
+        setFlag(cpu, FLAG_C, (result & 0x100) >> 8);
+        break;
+      }
+    case ALU_OP_SLL:
+      {
+        result = (dest8 << 1);
+        result |= 1; /* simple trick */
+        update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_PV, 1,0);
+        setFlag(cpu, FLAG_C, (result & 0x100) >> 8);
+        break;
+      }
     case ALU_OP_SRA:
-      result = (dest8 >> 1) | (dest8 & 0x80);
-      update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_P, 1);
-      setFlag(cpu, FLAG_H | FLAG_N, 0);
-      if (dest8 & 0x01) cpu->flags |= FLAG_C;
-      else cpu->flags &= ~FLAG_C;
-      break;
+      {
+        result = (dest8 >> 1) | (dest8 & 0x80);
+        update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_PV, 1,0);
+        setFlag(cpu, FLAG_C, dest8 & 0x01);
+        break;
+      }
     case ALU_OP_SRL:
-      result = (dest8 >> 1);
-      update_flags8(cpu, result, FLAG_Z | FLAG_P, 1);
-      setFlag(cpu, FLAG_S | FLAG_H | FLAG_N, 0);
-      if (dest8 & 0x01) cpu->flags |= FLAG_C;
-      else cpu->flags &= ~FLAG_C;
-      break;
+      {
+        result = (dest8 >> 1);
+        update_flags8(cpu, result, FLAG_S | FLAG_Z | FLAG_PV, 1,0);
+        setFlag(cpu, FLAG_C, dest8 & 0x01);
+        break;
+      }
     case ALU_OP_BIT:
-      result = dest8 & (1 << source8);
-      if (result == 0) setFlag(cpu, FLAG_Z, 1); /* right? */
-      else setFlag(cpu, FLAG_Z, 0);
-      setFlag(cpu, FLAG_H, 1);
-      setFlag(cpu, FLAG_N, 0);
-      return;
+      { /* mostly correct */
+        bool bit = dest8 & (1 << source8);
+        setFlag(cpu, FLAG_PV | FLAG_Z, !bit);
+        setFlag(cpu, FLAG_H, 1);
+        setFlag(cpu, FLAG_N, 0);
+        if (bit) {
+          setFlag(cpu, FLAG_S, dest8 & 0x80);
+          setFlag(cpu, FLAG_Y, dest8 & 0x08);
+          setFlag(cpu, FLAG_X, dest8 & 0x20);
+        } else cpu->flags &= ~(FLAG_S | FLAG_Y | FLAG_X);
+        
+        return;
+      }
     case ALU_OP_RES:
       result = dest8 & ~(1 << source8);
       break;
@@ -320,23 +385,21 @@ void alu16(VirtZ80 *cpu, uint8_t dest, uint8_t src, uint8_t ins) {
   else source16 = getRegpair(cpu, src);
 
   switch (ins) {
-    case ALU_OP_ADD:
+    case ALU_OP_ADD: /* TODO: fix half carry */
       result = dest16 + source16;
-      update_flags16(cpu, result, FLAG_C | FLAG_H);
-      setFlag(cpu, FLAG_N, 0);
+      update_flags16(cpu, result, FLAG_C, 0);
+      setFlag(cpu, FLAG_H, (result & 0x400) >> 15);
       break;
-    case ALU_OP_ADC:
+    case ALU_OP_ADC: /* TODO: fix flags */
       result = dest16 + source16 + getFlag(cpu, FLAG_C);
-      update_flags16(cpu, result, FLAG_C | FLAG_P | FLAG_H | FLAG_Z | FLAG_S);
-      setFlag(cpu, FLAG_N, 0);
+      update_flags16(cpu, result, FLAG_C | FLAG_PV | FLAG_H | FLAG_Z | FLAG_S, 0);
       break;
     case ALU_OP_SUB:
       result = dest16 - source16;
       break;
-    case ALU_OP_SBC:
+    case ALU_OP_SBC: /* TODO: fix flags */
       result = dest16 - source16 - getFlag(cpu, FLAG_C);
-      update_flags16(cpu, result, FLAG_P | FLAG_H | FLAG_Z | FLAG_S);
-      setFlag(cpu, FLAG_N, 1);
+      update_flags16(cpu, result, FLAG_PV | FLAG_H | FLAG_Z | FLAG_S, 1);
       /* TODO: add borrow(carry) logic */
       break;
     case ALU_OP_INC:
@@ -379,7 +442,18 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->regs[REG_B] = fByte(cpu);
       break;
     case 0x07: // RLCA
-      alu8(cpu, &cpu->regs[REG_A], 0, ALU_OP_RLC);
+      { /* Dirty way to do this */
+        uint16_t result = (cpu->regs[REG_A] << 1) | (cpu->regs[REG_A] >> 7);
+        //if (result & 0x100) setFlag(cpu, FLAG_C, 1);
+        //else setFlag(cpu, FLAG_C, 0);
+        setFlag(cpu, FLAG_C, (result & 0x100) >> 8);
+        setFlag(cpu, FLAG_N | FLAG_H, 0);
+
+        cpu->regs[REG_A] = result & 0xFF;
+
+        if (cpu->regs[REG_A] & 0x08) setFlag(cpu, FLAG_Y, 1); else setFlag(cpu, FLAG_Y, 0);
+        if (cpu->regs[REG_A] & 0x20) setFlag(cpu, FLAG_X, 1); else setFlag(cpu, FLAG_X, 0);
+      }
       break;
     case 0x08: // EX AF, AF'
       exchange_shadow(cpu, REG_AF, REG_AF);
@@ -403,7 +477,14 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->regs[REG_C] = fByte(cpu);
       break;
     case 0x0F: // RRCA
-      alu8(cpu, &cpu->regs[REG_A], 0, ALU_OP_RRC);
+      {
+        uint16_t result = (cpu->regs[REG_A] >> 1) | (cpu->regs[REG_A] << 7);
+        setFlag(cpu, FLAG_C, cpu->regs[REG_A] & 0x01);
+        cpu->regs[REG_A] = result & 0xFF;
+
+        if (cpu->regs[REG_A] & 0x08) setFlag(cpu, FLAG_Y, 1); else setFlag(cpu, FLAG_Y, 0);
+        if (cpu->regs[REG_A] & 0x20) setFlag(cpu, FLAG_X, 1); else setFlag(cpu, FLAG_X, 0);
+      }
       break;
     case 0x10: // DJNZ d
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
@@ -431,7 +512,16 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->regs[REG_D] = fByte(cpu);
       break;
     case 0x17: // RLA
-      alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_RL);
+      {
+        uint16_t result = (cpu->regs[REG_A] << 1) | (cpu->flags & FLAG_C);
+        setFlag(cpu, FLAG_C, (result & 0x100) >> 8);
+        setFlag(cpu, FLAG_N | FLAG_H, 0);
+
+        cpu->regs[REG_A] = result & 0xFF;
+
+        if (cpu->regs[REG_A] & 0x08) setFlag(cpu, FLAG_Y, 1); else setFlag(cpu, FLAG_Y, 0);
+        if (cpu->regs[REG_A] & 0x20) setFlag(cpu, FLAG_X, 1); else setFlag(cpu, FLAG_X, 0);
+      }
       break;
     case 0x18: // JR d
       cpu->pc += (int8_t)fByte(cpu);
@@ -455,7 +545,14 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->regs[REG_E] = fByte(cpu);
       break;
     case 0x1F: // RRA
-      alu8(cpu, &cpu->regs[REG_A], 0, ALU_OP_RR);
+      {
+        uint16_t result = (cpu->regs[REG_A] >> 1) | ((cpu->flags & FLAG_C) << 7);
+        setFlag(cpu, FLAG_C, cpu->regs[REG_A] & 0x01);
+        cpu->regs[REG_A] = result & 0xFF;
+
+        if (cpu->regs[REG_A] & 0x08) setFlag(cpu, FLAG_Y, 1); else setFlag(cpu, FLAG_Y, 0);
+        if (cpu->regs[REG_A] & 0x20) setFlag(cpu, FLAG_X, 1); else setFlag(cpu, FLAG_X, 0);
+      }
       break;
     case 0x20: // JR NZ, d
       reladdr = (int8_t)fByte(cpu);
@@ -527,7 +624,8 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->sp = fWord(cpu);
       break;
     case 0x32: // LD (nn), A
-      memory[fWord(cpu)] = cpu->regs[REG_A];
+      cpu->wz = fWord(cpu);
+      memory[cpu->wz] = cpu->regs[REG_A];
       break;
     case 0x33: // INC SP
       cpu->sp += 1;
@@ -925,7 +1023,7 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->pc = 0x18;
       break;
     case 0xE0: // RET PO
-      if (getFlag(cpu, FLAG_P) == 0) {
+      if (getFlag(cpu, FLAG_PV) == 0) {
         cpu->pc = pop(cpu);
       }
       break;
@@ -934,7 +1032,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xE2: // JP PO, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_P) == 0) {
+      if (getFlag(cpu, FLAG_PV) == 0) {
         cpu->pc = cpu->wz;
       }
       break;
@@ -947,7 +1045,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xE4: // CALL PO, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_P) == 0) {
+      if (getFlag(cpu, FLAG_PV) == 0) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
       }
@@ -963,7 +1061,7 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->pc = 0x20;
       break;
     case 0xE8: // RET PE
-      if (getFlag(cpu, FLAG_P) == 1) {
+      if (getFlag(cpu, FLAG_PV) == 1) {
         cpu->pc = pop(cpu);
       }
       break;
@@ -972,7 +1070,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xEA: // JP PE, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_P) != 0) {
+      if (getFlag(cpu, FLAG_PV) != 0) {
         cpu->pc = cpu->wz;
       }
       break;
@@ -981,7 +1079,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xEC: // CALL PE, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_P) != 0) {
+      if (getFlag(cpu, FLAG_PV) != 0) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
       }
@@ -1006,7 +1104,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xF2: // JP P, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_P) == 0) {
+      if (getFlag(cpu, FLAG_PV) == 0) {
         cpu->pc = cpu->wz;
       }
       break;
@@ -1015,7 +1113,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xF4: // CALL P, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_P) == 0) {
+      if (getFlag(cpu, FLAG_PV) == 0) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
       }
@@ -1235,32 +1333,32 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu16(cpu, REG_DE, REG_DE, ALU_OP_INC);
       alu16(cpu, REG_BC, REG_BC, ALU_OP_DEC);
       if (getRegpair(cpu, REG_BC) == 0) {
-        setFlag(cpu, FLAG_P, 0);
-      } else setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 0);
+      } else setFlag(cpu, FLAG_PV, 1);
       break;
     case 0xA1: // CPI
       alu8(cpu, &cpu->regs[REG_A], memory[getRegpair(cpu, REG_HL)], ALU_OP_CP);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_INC);
       alu16(cpu, REG_BC, REG_BC, ALU_OP_DEC);
       if (getRegpair(cpu, REG_BC) == 0) {
-        setFlag(cpu, FLAG_P, 0);
-      } else setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 0);
+      } else setFlag(cpu, FLAG_PV, 1);
       break;
     case 0xA2: // INI
       memory[getRegpair(cpu, REG_HL)] = InputHandler(cpu->regs[REG_C]);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_INC);
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       if (cpu->regs[REG_B] == 0) {
-        setFlag(cpu, FLAG_P, 0);
-      } else setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 0);
+      } else setFlag(cpu, FLAG_PV, 1);
       break;
     case 0xA3: // OUTI
       OutputHandler(cpu->regs[REG_C], memory[getRegpair(cpu, REG_HL)]);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_INC);
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       if (cpu->regs[REG_B] == 0) {
-        setFlag(cpu, FLAG_P, 0);
-      } else setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 0);
+      } else setFlag(cpu, FLAG_PV, 1);
       break;
     case 0xA8: // LDD
       memory[getRegpair(cpu, REG_DE)] = memory[getRegpair(cpu, REG_HL)];
@@ -1268,32 +1366,32 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu16(cpu, REG_DE, REG_DE, ALU_OP_DEC);
       alu16(cpu, REG_BC, REG_BC, ALU_OP_DEC);
       if (getRegpair(cpu, REG_BC) == 0) {
-        setFlag(cpu, FLAG_P, 0);
-      } else setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 0);
+      } else setFlag(cpu, FLAG_PV, 1);
       break;
     case 0xA9: // CPD
       alu8(cpu, &cpu->regs[REG_A], memory[getRegpair(cpu, REG_HL)], ALU_OP_CP);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_DEC);
       alu16(cpu, REG_BC, REG_BC, ALU_OP_DEC);
       if (getRegpair(cpu, REG_BC) == 0) {
-        setFlag(cpu, FLAG_P, 0);
-      } else setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 0);
+      } else setFlag(cpu, FLAG_PV, 1);
       break;
     case 0xAA: // IND
       memory[getRegpair(cpu, REG_HL)] = InputHandler(cpu->regs[REG_C]);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_DEC);
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       if (cpu->regs[REG_B] == 0) {
-        setFlag(cpu, FLAG_P, 0);
-      } else setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 0);
+      } else setFlag(cpu, FLAG_PV, 1);
       break;
     case 0xAB: // OUTD
       OutputHandler(cpu->regs[REG_C], memory[getRegpair(cpu, REG_HL)]);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_DEC);
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       if (cpu->regs[REG_B] == 0) {
-        setFlag(cpu, FLAG_P, 0);
-      } else setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 0);
+      } else setFlag(cpu, FLAG_PV, 1);
       break;
     case 0xB0: // LDIR
       memory[getRegpair(cpu, REG_DE)] = memory[getRegpair(cpu, REG_HL)];
@@ -1301,10 +1399,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu16(cpu, REG_DE, REG_DE, ALU_OP_INC);
       alu16(cpu, REG_BC, REG_BC, ALU_OP_DEC);
       if (getRegpair(cpu, REG_BC) != 0) {
-        setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
       } else {
-        setFlag(cpu, FLAG_P, 0);
+        setFlag(cpu, FLAG_PV, 0);
       }
       break;
     case 0xB1: // CPIR
@@ -1312,10 +1410,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu16(cpu, REG_HL, REG_HL, ALU_OP_INC);
       alu16(cpu, REG_BC, REG_BC, ALU_OP_DEC);
       if ((getRegpair(cpu, REG_BC) != 0) && !(getFlag(cpu, FLAG_Z))) {
-        setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
       } else {
-        setFlag(cpu, FLAG_P, 0);
+        setFlag(cpu, FLAG_PV, 0);
       }
       break;
     case 0xB2: // INIR
@@ -1323,10 +1421,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_INC);
       if (cpu->regs[REG_B] != 0) {
-        setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
       } else {
-        setFlag(cpu, FLAG_P, 0);
+        setFlag(cpu, FLAG_PV, 0);
       }
       break;
     case 0xB3: // OTIR
@@ -1334,10 +1432,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_INC);
       if (cpu->regs[REG_B] != 0) {
-        setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
       } else {
-        setFlag(cpu, FLAG_P, 0);
+        setFlag(cpu, FLAG_PV, 0);
       }
       break;
     case 0xB8: // LDDR
@@ -1346,10 +1444,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu16(cpu, REG_DE, REG_DE, ALU_OP_DEC);
       alu16(cpu, REG_BC, REG_BC, ALU_OP_DEC);
       if (getRegpair(cpu, REG_BC) != 0) {
-        setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
       } else {
-        setFlag(cpu, FLAG_P, 0);
+        setFlag(cpu, FLAG_PV, 0);
       }
       break;
     case 0xB9: // CPDR
@@ -1357,10 +1455,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu16(cpu, REG_HL, REG_HL, ALU_OP_DEC);
       alu16(cpu, REG_BC, REG_BC, ALU_OP_DEC);
       if (getRegpair(cpu, REG_BC) != 0 && !(getFlag(cpu, FLAG_Z))) {
-        setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
       } else {
-        setFlag(cpu, FLAG_P, 0);
+        setFlag(cpu, FLAG_PV, 0);
       }
       break;
     case 0xBA: // INDR
@@ -1368,10 +1466,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_DEC);
       if (cpu->regs[REG_B] != 0) {
-        setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
       } else {
-        setFlag(cpu, FLAG_P, 0);
+        setFlag(cpu, FLAG_PV, 0);
       }
       break;
     case 0xBB: // OTDR
@@ -1379,10 +1477,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       alu16(cpu, REG_HL, REG_HL, ALU_OP_DEC);
       if (cpu->regs[REG_B] != 0) {
-        setFlag(cpu, FLAG_P, 1);
+        setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
       } else {
-        setFlag(cpu, FLAG_P, 0);
+        setFlag(cpu, FLAG_PV, 0);
       }
       break;
     default:
@@ -1473,21 +1571,17 @@ void BitInstruction(VirtZ80 *cpu) {
       alu8(cpu, &memory[getRegpair(cpu, REG_HL)], 0, ALU_OP_SRA);
       break;
 
-    case 0x30: // SLL reg, TODO
+    case 0x30: // SLL reg
     case 0x31:
     case 0x32:
     case 0x33:
     case 0x34:
     case 0x35:
     case 0x37:
-      //alu8(cpu, (opcode & 0x07), 0, false, ALU_OP_SLL);
+      alu8(cpu, &cpu->regs[(opcode & 0x07)], 0, ALU_OP_SLL);
       break;
     case 0x36: // SLL (HL)
-      /*temp1 = cpu->regs[REG_A];
-      cpu->regs[REG_A] = memory[getRegpair(cpu, REG_HL)];
-      alu8(cpu, &cpu->regs[REG_A], 0, false, ALU_OP_SLL);
-      memory[getRegpair(cpu, REG_HL)] = cpu->regs[REG_A];
-      cpu->regs[REG_A] = temp1;*/
+      alu8(cpu, &memory[getRegpair(cpu, REG_HL)], 0, ALU_OP_SLL);
       break;
 
     case 0x38: // SRL reg
@@ -1973,7 +2067,7 @@ int main(int argc, char **argv) {
 
   execute(&cpu);
   printState(&cpu);
-  stackTrace(&cpu, 10);
+  //stackTrace(&cpu, 10);
   //printMemory(&cpu);
   return 0;
 }
