@@ -1895,10 +1895,10 @@ void stackTrace(VirtZ80 *cpu, int depth) {
   printf("--STACK TRACE--\n");
   int sp = cpu->sp;
   for (int i = 0; i < depth; i++) {
+    if (sp >= 0xFFFF || sp < 0 || (sp+1 >= MEM_SIZE)) break;
     uint16_t value = memory[sp] | (memory[sp+1] << 8);
     printf("0x%04x: 0x%04x\n", sp, value);
     sp += 2;
-    if (sp >= 0x10000) break;
   }
 }
 
