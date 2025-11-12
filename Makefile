@@ -5,12 +5,12 @@ CC := gcc
 CFLAGS := -O0 -g -Wall -fsanitize=address
 
 # z80asm assembler
-#ASM := z80asm
-#ASMFLAGS := 
+ASM := z80asm
+ASMFLAGS := -o test.bin
 
 # z88dk assembler
-ASM := z88dk-z80asm
-ASMFLAGS := -mz80 -b
+#ASM := z88dk-z80asm
+#ASMFLAGS := -mz80 -b
 
 .PHONY: all
 

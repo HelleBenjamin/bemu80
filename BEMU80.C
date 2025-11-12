@@ -151,6 +151,7 @@ void update_flags8(VirtZ80 *cpu, uint16_t result, uint8_t flags, bool pv, bool i
   }
   if ((result & 0x80) && (flags & FLAG_S)) newflags |= FLAG_S;
 
+  if ((result == 0) && (flags & FLAG_Z)) newflags |= FLAG_Z;
 
   /*Undocumented flags Y,X
     Y = copy of bit 3 of the result
@@ -173,6 +174,7 @@ void update_flags16(VirtZ80 *cpu, uint32_t result, uint8_t flags, bool is_sub) {
   if ((result & 0x8) && (flags & FLAG_H)) newflags |= FLAG_H;
   if ((result > 0xFFFF) && (flags & FLAG_PV)) newflags |= FLAG_PV;
   if ((result & 0x8000) && (flags & FLAG_S)) newflags |= FLAG_S;
+  if ((result == 0) && (flags & FLAG_Z)) newflags |= FLAG_Z;
 
 
   /*Undocumented flags Y,X
