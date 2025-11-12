@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
-/Copyright (c) 2025 Benjamin Helle
+ * Copyright (c) 2025 Benjamin Helle
 */ 
 #ifndef BEMU80_H
 #define BEMU80_H
@@ -90,30 +90,13 @@ void execute(VirtZ80 *cpu);
 void OutputHandler(uint8_t port, uint8_t value);
 uint8_t InputHandler(uint8_t port);
 
-uint8_t fByte(VirtZ80 *cpu);
-int8_t fSByte(VirtZ80 *cpu);
-uint16_t fWord(VirtZ80 *cpu);
-void loadLow(uint16_t *reg, uint8_t value);
-void loadHigh(uint16_t *reg, uint8_t value);
-uint8_t getHigh(uint16_t reg);
-uint8_t getLow(uint16_t reg);
-void exchange(VirtZ80 *cpu, uint8_t regpair1, uint8_t regpair2);
-void exchange_shadow(VirtZ80 *cpu, uint8_t regpair, uint8_t shadowregpair);
-void push_new(VirtZ80 *cpu, uint8_t high, uint8_t low);
-void pop_new(VirtZ80 *cpu, uint8_t* high, uint8_t* low);
-void push(VirtZ80 *cpu, uint16_t value);
-uint16_t pop(VirtZ80 *cpu);
-uint16_t getRegpair(VirtZ80 *cpu, uint8_t regpair);
-uint16_t getShadowRegpair(VirtZ80 *cpu, uint8_t regpair);
-void loadRegpair(VirtZ80 *cpu, uint8_t regpair, uint16_t value);
-void loadShadowRegpair(VirtZ80 *cpu, uint8_t regpair, uint16_t value);
 void printState(VirtZ80 *cpu);
 void stackTrace(VirtZ80 *cpu, int depth);
 
 void MainInstruction(VirtZ80 *cpu);
 void MiscInstruction(VirtZ80 *cpu);
 void BitInstruction(VirtZ80 *cpu);
-void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg, uint8_t index_reg_prefix);
+void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg);
 
 /*DEBUG STUFF*/
 void draw_registers(VirtZ80 *cpu);
