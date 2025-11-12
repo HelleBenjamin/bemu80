@@ -154,14 +154,14 @@ void update_flags8(VirtZ80 *cpu, uint16_t result, uint8_t flags, bool pv, bool i
   if ((result == 0) && (flags & FLAG_Z)) newflags |= FLAG_Z;
 
   /*Undocumented flags Y,X
-    Y = copy of bit 3 of the result
-    X = copy of bit 5 of the result
+    Y = copy of bit 5 of the result
+    X = copy of bit 3 of the result
   */
 
-  if ((result & 0x08)) newflags |= FLAG_Y;
-  if ((result & 0x20)) newflags |= FLAG_X;
+  if ((result & 0x20)) newflags |= FLAG_Y;
+  if ((result & 0x08)) newflags |= FLAG_X;
 
-  cpu->flags = (cpu->flags & ~(flags)) | newflags;
+  cpu->flags = (cpu->flags & ~(flags & newflags)) | (newflags & flags);
 
   //printf("update_flags8 result: %02x flags: %02x newflags: %02x\n", result, cpu->flags, newflags);
 }
@@ -178,14 +178,14 @@ void update_flags16(VirtZ80 *cpu, uint32_t result, uint8_t flags, bool is_sub) {
 
 
   /*Undocumented flags Y,X
-    Y = copy of bit 3 of the result(high byte)
-    X = copy of bit 5 of the result(high byte)
+    Y = copy of bit 5 of the result(high byte)
+    X = copy of bit 3 of the result(high byte)
   */
 
-  if ((result & (0x08 << 8))) newflags |= FLAG_Y;
-  if ((result & (0x20 << 8))) newflags |= FLAG_X;
+  if ((result & (0x20 << 8))) newflags |= FLAG_Y;
+  if ((result & (0x08 << 8))) newflags |= FLAG_X;
 
-  cpu->flags = (cpu->flags & ~(flags)) | newflags;
+  cpu->flags = (cpu->flags & ~(flags & newflags)) | (newflags & flags);
 
 }
 
@@ -492,7 +492,7 @@ void MainInstruction(VirtZ80 *cpu) {
       alu8(cpu, &cpu->regs[REG_B], 0, ALU_OP_DEC);
       reladdr = (int8_t)fByte(cpu);
       if (cpu->regs[REG_B] != 0) {
-        cpu->pc += reladdr;
+        cpu->pc += (int8_t)reladdr; /* Treat as signed */
       }
       break;
     case 0x11: // LD DE, nn
@@ -645,7 +645,7 @@ void MainInstruction(VirtZ80 *cpu) {
       setFlag(cpu, FLAG_C, 1);
       break;
     case 0x38: // JR C, d
-      reladdr = fSByte(cpu);
+      reladdr = (int8_t)fByte(cpu);
       if (getFlag(cpu, FLAG_C) == 1) {
         cpu->pc += (int8_t)reladdr;
       }
@@ -1245,6 +1245,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       break;
     case 0x57: // LD A, I
       cpu->regs[REG_A] = cpu->i;
+      setFlag(cpu, FLAG_S, cpu->i & 0x80);
+      setFlag(cpu, FLAG_Z, cpu->i == 0);
+      setFlag(cpu, FLAG_N | FLAG_H, 0);
+      setFlag(cpu, FLAG_PV, cpu->iff2);
       break;
     case 0x58: // IN E, (C)
       cpu->regs[REG_E] = InputHandler(cpu->regs[REG_C]);
@@ -1265,6 +1269,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       break;
     case 0x5F: // LD A, R
       cpu->regs[REG_A] = cpu->r;
+      setFlag(cpu, FLAG_S, cpu->r & 0x80);
+      setFlag(cpu, FLAG_Z, cpu->r == 0);
+      setFlag(cpu, FLAG_N | FLAG_H, 0);
+      setFlag(cpu, FLAG_PV, cpu->iff2);
       break;
     case 0x60: // IN H, (C)
       cpu->regs[REG_H] = InputHandler(cpu->regs[REG_C]);
