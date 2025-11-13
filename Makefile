@@ -1,8 +1,8 @@
 CC := gcc
 # Release flags
-CFLAGS := -O2 -Wall
+#CFLAGS := -O2 -Wall -lpthread
 # Debug flags
-#CFLAGS := -O0 -g -Wall -fsanitize=address
+CFLAGS := -O0 -g -Wall -fsanitize=address -lpthread
 
 # z80asm assembler
 #ASM := z80asm

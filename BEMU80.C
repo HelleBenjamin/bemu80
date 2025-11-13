@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <termios.h>
+#include <pthread.h>
 
 bool print_ins = false;
 
@@ -65,9 +66,46 @@ static inline void push(VirtZ80 *cpu, uint16_t value) {
 }
 
 static inline uint16_t pop(VirtZ80 *cpu) {
-  uint16_t result = memory[cpu->sp++];
-  result |= memory[cpu->sp++] << 8;
+  uint16_t result = mread16(cpu->sp);
+  cpu->sp += 2;
+  /*uint16_t result = memory[cpu->sp++];
+  result |= memory[cpu->sp++] << 8;*/
   return result;
+}
+
+#define CHAR_BUF_SIZE 4
+static char character_buf[CHAR_BUF_SIZE];
+static uint8_t character_buf_index = 0;
+
+static inline void push_char(char c) {
+  if (character_buf_index >= CHAR_BUF_SIZE) return;
+  character_buf[character_buf_index++] = c;
+}
+
+static inline char pop_char() {
+  if (character_buf_index == 0) return 0;
+  return character_buf[--character_buf_index];
+}
+
+void* input_thread(void* arg) {
+  char ch;
+  while (1) {
+    struct termios oldt, newt;
+    int ch;
+
+    tcgetattr(STDIN_FILENO, &oldt); // Save old settings
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);         // Disable buffering and echo
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);  // Apply new settings
+
+    ch = getchar();  // Read one character
+    if (ch != EOF) {
+      push_char(ch);
+    }
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // Restore old settings;  
+  }
+  return NULL;
 }
 
 int getch_in(void) {
@@ -143,7 +181,8 @@ void OutputHandler(uint8_t port, uint8_t value) {
 
 uint8_t InputHandler(uint8_t port) {
   char input = 0;
-  if (port == STD_PORT) input = (char)getch_in(); // STDIN
+  if (port == STD_PORT) input = pop_char(); // STDIN
+  if (port == 0x80) input = character_buf[character_buf_index]; /* TODO: see status, eg. if buffer is full*/
   //printf("ASCII CODE: %02x", input);
   return input;
 }
@@ -1904,6 +1943,10 @@ int main(int argc, char **argv) {
   if (printmem) printMemory(&cpu);
 
   cpu.pc = start_pc;
+
+  /*TODO: Add interrupt to this input*/
+  pthread_t input_thread_thread; /* This way the input doesn't block the execution, maybe add an interrupt when character is available?*/
+  pthread_create(&input_thread_thread, NULL, input_thread, NULL);
 
   execute(&cpu);
   printState(&cpu);
