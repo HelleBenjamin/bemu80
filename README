@@ -1,8 +1,47 @@
 BEMU80
 ======
 
-Bemu80 is a Z80 emulator written in C for Linux. It's currently almost fully functional, 
-but expect some features not to work and the code to be a mess. More info coming soon.
+Bemu80 is a Z80 emulator written in C for POSIX-compliant systems. It's currently mostly functional, 
+but expect to find bugs and missing features. If you find any bugs, please report them.
+
+There are currently two branches: main and development. The main branch is stable and the development branch is unstable(and possibly buggy). You should use the main branch unless you're a developer and want to test new features.
+
+Building
+========
+
+Building Bemu80 is very simple.
+What you need:
+- a compiler, such as gcc
+- make
+- POSIX-compliant OS, like linux, macos and freebsd
+- basic coding knowledge
+
+Build instructions:
+
+1. Configure build flags in the makefile.
+You can comment some configurations out if you don't want them.
+For example, if you don't want to build debug version, comment out the `CFLAGS := -O0 -g -Wall -fsanitize=address -lpthread` line and uncomment the `CFLAGS := -O2 -Wall -lpthread` line.
+
+2. Run `make`. This will build the emulator. Use `sudo make install` to install it to your /usr/local/bin directory.
+
+3. Run binary programs with the `bemu80` command.
+
+Options
+=======
+
+The binary program to be executed is specified as the first argument.
+Example: `bemu80 test.bin -ins` not `bemu80 -ins test.bin`.
+The emulator accepts the following arguments:
+
+- `-ins`: Print CPU state after each instruction. Useful for debugging.
+- `-mem`: Do a memory dump after loading the program.
+- `-pc`: Set the initial program counter.
+- `-org`: Set the address where the program is loaded.
+
+Contributing
+============
+
+If you want to contribute to Bemu80, you can fork the repository and submit a pull request. Any feedback is welcome.
 
 Backstory
 =========

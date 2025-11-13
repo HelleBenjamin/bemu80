@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
-/Copyright (c) 2025 Benjamin Helle
+ * Copyright (c) 2025 Benjamin Helle
 */ 
 #include "BEMU80.H"
 #include <cstdint>
@@ -8,8 +8,10 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <termios.h>
+#include <pthread.h>
 
 bool print_ins = false;
+bool input_tread_stop = false;
 
 uint8_t memory[MEM_SIZE]; /* global memory */
 
@@ -18,8 +20,6 @@ uint8_t memory[MEM_SIZE]; /* global memory */
 #define BC(cpu) ((cpu->regs[REG_B] << 8) | cpu->regs[REG_C])
 #define DE(cpu) ((cpu->regs[REG_D] << 8) | cpu->regs[REG_E])
 #define HL(cpu) ((cpu->regs[REG_H] << 8) | cpu->regs[REG_L])
-
-#define EX(r1, r2) { uint16_t temp = r1; r1 = r2; r2 = temp; }
 
 static inline void set_af(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_A] = (value >> 8) & 0xFF; cpu->flags = value & 0xFF; }
 static inline void set_bc(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_B] = (value >> 8) & 0xFF; cpu->regs[REG_C] = value & 0xFF; }
@@ -37,13 +37,13 @@ static inline uint8_t mread8(uint16_t address) {
 }
 
 static inline void mwrite16(uint16_t address, uint16_t value) {
-  if (address >= MEM_SIZE || address < 0) return;
+  if (address+1 >= MEM_SIZE || address < 0) return;
   memory[address] = value & 0xFF;
   memory[address + 1] = (value >> 8) & 0xFF;
 }
 
 static inline uint16_t mread16( uint16_t address) {
-  if (address >= MEM_SIZE || address < 0) return 0;
+  if (address+1 >= MEM_SIZE || address < 0) return 0;
   return memory[address] | memory[address + 1] << 8;
 }
 
@@ -60,29 +60,72 @@ static inline uint16_t fWord(VirtZ80 *cpu) {
 static inline void push(VirtZ80 *cpu, uint16_t value) {
   cpu->sp -= 2;
   mwrite16(cpu->sp, value);
-  //memory[--cpu->sp] = value >> 8;
-  //memory[--cpu->sp] = value & 0xFF;  
 }
 
 static inline uint16_t pop(VirtZ80 *cpu) {
-  uint16_t result = memory[cpu->sp++];
-  result |= memory[cpu->sp++] << 8;
+  uint16_t result = mread16(cpu->sp);
+  cpu->sp += 2;
   return result;
 }
 
-int getch_in(void) {
-  struct termios oldt, newt;
+#define CHAR_BUF_SIZE 128 /* Increase will allow larger copy paste*/
+
+typedef struct {
+  char buf[CHAR_BUF_SIZE];
+  uint8_t head;
+  uint8_t tail;
+  uint8_t count;
+  pthread_mutex_t lock; /* Prevent race conditions*/
+} character_buffer;
+
+static character_buffer char_buf = {
+  .head = 0,
+  .tail = 0,
+  .count = 0,
+  .lock = PTHREAD_MUTEX_INITIALIZER
+};
+
+/* Very pretty functions :)*/
+static inline void push_char(char c) {
+  pthread_mutex_lock(&char_buf.lock);
+  if (char_buf.count >= CHAR_BUF_SIZE) {
+    pthread_mutex_unlock(&char_buf.lock);
+    return;
+  }
+
+  char_buf.buf[char_buf.head] = c;
+  char_buf.head = (char_buf.head + 1) % CHAR_BUF_SIZE;
+  char_buf.count++;
+
+  pthread_mutex_unlock(&char_buf.lock);
+}
+
+static inline char pop_char() {
+  pthread_mutex_lock(&char_buf.lock);
+  if (char_buf.count == 0) {
+    pthread_mutex_unlock(&char_buf.lock);
+    return 0;
+  }
+  char c = char_buf.buf[char_buf.tail];
+
+  char_buf.tail = (char_buf.tail + 1) % CHAR_BUF_SIZE;
+  char_buf.count--;
+
+  pthread_mutex_unlock(&char_buf.lock);
+  return c;
+}
+
+void* input_thread(void* arg) { /* Small simple input function */
   int ch;
 
-  tcgetattr(STDIN_FILENO, &oldt); // Save old settings
-  newt = oldt;
-  newt.c_lflag &= ~(ICANON | ECHO);         // Disable buffering and echo
-  tcsetattr(STDIN_FILENO, TCSANOW, &newt);  // Apply new settings
+  while (!input_tread_stop) {
+    ch = getchar(); 
+    if (ch != EOF) {
+      push_char(ch);
+    }
+  }
 
-  ch = getchar();  // Read one character
-
-  tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // Restore old settings
-  return ch;
+  return NULL;
 }
 
 void execute(VirtZ80 *cpu) {
@@ -143,7 +186,8 @@ void OutputHandler(uint8_t port, uint8_t value) {
 
 uint8_t InputHandler(uint8_t port) {
   char input = 0;
-  if (port == STD_PORT) input = (char)getch_in(); // STDIN
+  if (port == STD_PORT) input = pop_char(); // STDIN
+  if (port == 0x80) input = char_buf.count; /* What to do with this?*/
   //printf("ASCII CODE: %02x", input);
   return input;
 }
@@ -1360,8 +1404,6 @@ void MiscInstruction(VirtZ80 *cpu) {
       break;
     case 0x4D: // RETI
       cpu->pc = pop(cpu);
-      cpu->iff1 = 1;
-      cpu->iff2 = 1;
       break;
     case 0x4F: // LD R, A
       cpu->r = cpu->regs[REG_A];
@@ -1876,6 +1918,13 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  struct termios oldt, newt;
+
+  tcgetattr(STDIN_FILENO, &oldt); // Save old settings
+  newt = oldt;
+  newt.c_lflag &= ~(ICANON | ECHO);         // Disable buffering and echo
+  tcsetattr(STDIN_FILENO, TCSANOW, &newt);  // Apply new settings
+
   VirtZ80 cpu;
   memset(&cpu, 0, sizeof(VirtZ80));
   fseek(source, 0, SEEK_END);
@@ -1905,8 +1954,19 @@ int main(int argc, char **argv) {
 
   cpu.pc = start_pc;
 
+  pthread_t input_thread_thread; /* This way the input doesn't block the execution, maybe add an interrupt when character is available?*/
+  pthread_create(&input_thread_thread, NULL, input_thread, NULL);
+
   execute(&cpu);
+  printf("CPU State: ");
   printState(&cpu);
+  
+  input_tread_stop = true;
+  pthread_cancel(input_thread_thread);
+  pthread_join(input_thread_thread, NULL);
+
+  tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // Restore old settings
+
   //stackTrace(&cpu, 10);
   //printMemory(&cpu);
   return 0;

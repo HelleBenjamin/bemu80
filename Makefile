@@ -1,8 +1,8 @@
 CC := gcc
 # Release flags
-CFLAGS := -O2 -Wall
+CFLAGS := -O2 -Wall -lpthread
 # Debug flags
-#CFLAGS := -O0 -g -Wall -fsanitize=address
+#CFLAGS := -O0 -g -Wall -fsanitize=address -lpthread
 
 # z80asm assembler
 #ASM := z80asm
@@ -29,3 +29,9 @@ testrun: test
 
 disasm:
 	z88dk-dis -mz80 -o 0x0000 test.bin > testdis.asm
+
+# EXAMPLES
+example_folder := examples
+
+example_io:
+	$(ASM) $(ASMFLAGS) $(example_folder)/io.asm
