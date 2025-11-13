@@ -1065,7 +1065,7 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->pc = 0x00;
       break;
     case 0xC8: // RET Z
-      if (getFlag(cpu, FLAG_Z) == 1) {
+      if (getFlag(cpu, FLAG_Z)) {
         cpu->pc = pop(cpu);
         break;
       }
@@ -1075,7 +1075,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xCA: // JP Z, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_Z) != 0) {
+      if (getFlag(cpu, FLAG_Z)) {
         cpu->pc = cpu->wz;
       }
       break;
@@ -1084,7 +1084,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xCC: // CALL Z, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_Z) == 1) {
+      if (getFlag(cpu, FLAG_Z)) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
       }
@@ -1136,7 +1136,7 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->pc = 0x10;
       break;
     case 0xD8: // RET C
-      if (getFlag(cpu, FLAG_C) == 1) {
+      if (getFlag(cpu, FLAG_C)) {
         cpu->pc = pop(cpu);
       }
       break;
@@ -1147,7 +1147,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xDA: // JP C, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_C) != 0) {
+      if (getFlag(cpu, FLAG_C)) {
         cpu->pc = cpu->wz;
       }
       break;
@@ -1156,7 +1156,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xDC: // CALL C, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_C) != 0) {
+      if (getFlag(cpu, FLAG_C)) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
       }
@@ -1208,7 +1208,7 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->pc = 0x20;
       break;
     case 0xE8: // RET PE
-      if (getFlag(cpu, FLAG_PV) == 1) {
+      if (getFlag(cpu, FLAG_PV)) {
         cpu->pc = pop(cpu);
       }
       break;
@@ -1217,7 +1217,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xEA: // JP PE, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_PV) != 0) {
+      if (getFlag(cpu, FLAG_PV)) {
         cpu->pc = cpu->wz;
       }
       break;
@@ -1226,7 +1226,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xEC: // CALL PE, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_PV) != 0) {
+      if (getFlag(cpu, FLAG_PV)) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
       }
@@ -1251,7 +1251,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xF2: // JP P, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_PV) == 0) {
+      if (getFlag(cpu, FLAG_S) == 0) {
         cpu->pc = cpu->wz;
       }
       break;
@@ -1260,7 +1260,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xF4: // CALL P, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_PV) == 0) {
+      if (getFlag(cpu, FLAG_S) == 0) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
       }
@@ -1276,7 +1276,7 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->pc = 0x30;
       break;
     case 0xF8: // RET M
-      if (getFlag(cpu, FLAG_S) == 1) {
+      if (getFlag(cpu, FLAG_S)) {
         cpu->pc = pop(cpu);
       }
       break;
@@ -1285,7 +1285,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xFA: // JP M, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_S) != 0) {
+      if (getFlag(cpu, FLAG_S)) {
         cpu->pc = cpu->wz;
       }
       break;
@@ -1294,7 +1294,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xFC: // CALL M, nn
       cpu->wz = fWord(cpu);
-      if (getFlag(cpu, FLAG_S) != 0) {
+      if (getFlag(cpu, FLAG_S)) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
       }
