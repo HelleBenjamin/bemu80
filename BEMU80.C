@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <termios.h>
-#include <ncurses.h>
 
 bool print_ins = false;
 
