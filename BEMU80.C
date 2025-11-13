@@ -819,9 +819,8 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x3F: // CCF
       setFlag(cpu, FLAG_C, getFlag(cpu, FLAG_C) ^ 1);
       break;
-    case 0x40: // LD B, B
-      break;
-    case 0x41: // LD B, reg
+    case 0x40: /*LD B, reg */
+    case 0x41:
     case 0x42: 
     case 0x43:
     case 0x44:
@@ -1904,6 +1903,8 @@ int main(int argc, char **argv) {
   printf("Loaded %d bytes\n", i);
 
   if (printmem) printMemory(&cpu);
+
+  cpu.pc = start_pc;
 
   execute(&cpu);
   printState(&cpu);
