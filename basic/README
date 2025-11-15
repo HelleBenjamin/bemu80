@@ -16,6 +16,12 @@ The following modifications have been made to the Grant Searle's version of BASI
 - ANSI clear screen in `int.asm` and `basic.asm`
 - Set CR(carriage return) to 0x0A to match Enter key in `int.asm` and `basic.asm`
 
+How to build
+============
+
+I've added a Makefile to this repo. Run `make` to build the ROM.
+To build the ROM, you'll need to have DOSBox and srecord installed on your system.
+
 Copyright
 =========
 
