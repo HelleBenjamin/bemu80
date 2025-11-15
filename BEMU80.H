@@ -13,7 +13,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define MEM_SIZE 0xFFFF // 64k
+#define MEM_SIZE 0x10000 // 64k
 #define STD_PORT 0x81
 
 #define FLAG_C  0x01
