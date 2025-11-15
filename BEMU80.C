@@ -27,23 +27,23 @@ static inline void set_de(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_D] = (va
 static inline void set_hl(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_H] = (value >> 8) & 0xFF; cpu->regs[REG_L] = value & 0xFF; }
 
 static inline void mwrite8(uint16_t address, uint8_t value) { 
-  if (address >= MEM_SIZE || address < 0) return; /* TODO: error handling */
+  if (address >= MEM_SIZE) return; /* TODO: error handling */
   memory[address] = value;
 }
 
 static inline uint8_t mread8(uint16_t address) {
-  if (address >= MEM_SIZE || address < 0) return 0;
+  if (address >= MEM_SIZE) return 0;
   return memory[address];
 }
 
 static inline void mwrite16(uint16_t address, uint16_t value) {
-  if (address+1 >= MEM_SIZE || address < 0) return;
+  if (address+1 >= MEM_SIZE) return;
   memory[address] = value & 0xFF;
   memory[address + 1] = (value >> 8) & 0xFF;
 }
 
 static inline uint16_t mread16( uint16_t address) {
-  if (address+1 >= MEM_SIZE || address < 0) return 0;
+  if (address+1 >= MEM_SIZE) return 0;
   return memory[address] | memory[address + 1] << 8;
 }
 
@@ -642,8 +642,7 @@ void MainInstruction(VirtZ80 *cpu) {
 
         cpu->regs[REG_A] = result & 0xFF;
 
-        if (cpu->regs[REG_A] & 0x08) setFlag(cpu, FLAG_Y, 1); else setFlag(cpu, FLAG_Y, 0);
-        if (cpu->regs[REG_A] & 0x20) setFlag(cpu, FLAG_X, 1); else setFlag(cpu, FLAG_X, 0);
+        update_flagsYX(cpu, cpu->regs[REG_A]);
       }
       break;
     case 0x08: // EX AF, AF'
@@ -673,12 +672,11 @@ void MainInstruction(VirtZ80 *cpu) {
         setFlag(cpu, FLAG_C, cpu->regs[REG_A] & 0x01);
         cpu->regs[REG_A] = result & 0xFF;
 
-        if (cpu->regs[REG_A] & 0x08) setFlag(cpu, FLAG_Y, 1); else setFlag(cpu, FLAG_Y, 0);
-        if (cpu->regs[REG_A] & 0x20) setFlag(cpu, FLAG_X, 1); else setFlag(cpu, FLAG_X, 0);
+        update_flagsYX(cpu, cpu->regs[REG_A]);
       }
       break;
     case 0x10: // DJNZ d
-      cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
+      cpu->regs[REG_B] = cpu->regs[REG_B] - 1;
       reladdr = (int8_t)fByte(cpu);
       if (cpu->regs[REG_B] != 0) {
         cpu->pc += (int8_t)reladdr; /* Treat as signed */
@@ -710,8 +708,7 @@ void MainInstruction(VirtZ80 *cpu) {
 
         cpu->regs[REG_A] = result & 0xFF;
 
-        if (cpu->regs[REG_A] & 0x08) setFlag(cpu, FLAG_Y, 1); else setFlag(cpu, FLAG_Y, 0);
-        if (cpu->regs[REG_A] & 0x20) setFlag(cpu, FLAG_X, 1); else setFlag(cpu, FLAG_X, 0);
+        update_flagsYX(cpu, cpu->regs[REG_A]);
       }
       break;
     case 0x18: // JR d
@@ -741,8 +738,7 @@ void MainInstruction(VirtZ80 *cpu) {
         setFlag(cpu, FLAG_C, cpu->regs[REG_A] & 0x01);
         cpu->regs[REG_A] = result & 0xFF;
 
-        if (cpu->regs[REG_A] & 0x08) setFlag(cpu, FLAG_Y, 1); else setFlag(cpu, FLAG_Y, 0);
-        if (cpu->regs[REG_A] & 0x20) setFlag(cpu, FLAG_X, 1); else setFlag(cpu, FLAG_X, 0);
+        update_flagsYX(cpu, cpu->regs[REG_A]);
       }
       break;
     case 0x20: // JR NZ, d
@@ -804,6 +800,7 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x2F: // CPL
       cpu->regs[REG_A] = ~cpu->regs[REG_A];
       setFlag(cpu, FLAG_N | FLAG_H, 1);
+      update_flagsYX(cpu, cpu->regs[REG_A]);
       break;
     case 0x30: // JR NC, d
       reladdr = (int8_t)fByte(cpu);
@@ -834,6 +831,8 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0x37: // SCF
       setFlag(cpu, FLAG_C, 1);
+      setFlag(cpu, FLAG_N | FLAG_H, 0);
+      update_flagsYX(cpu, cpu->regs[REG_A]);
       break;
     case 0x38: // JR C, d
       reladdr = (int8_t)fByte(cpu);
@@ -860,7 +859,10 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->regs[REG_A] = fByte(cpu);
       break;
     case 0x3F: // CCF
+      setFlag(cpu, FLAG_H, getFlag(cpu, FLAG_C));
       setFlag(cpu, FLAG_C, getFlag(cpu, FLAG_C) ^ 1);
+      setFlag(cpu, FLAG_N, 0);
+      update_flagsYX(cpu, cpu->regs[REG_A]);
       break;
     case 0x40: /*LD B, reg */
     case 0x41:
@@ -1298,6 +1300,7 @@ void MainInstruction(VirtZ80 *cpu) {
       }
       break;
     case 0xF3: // DI
+      cpu->iff1 = 0;
       cpu->iff2 = 0;
       break;
     case 0xF4: // CALL P, nn
@@ -1333,6 +1336,7 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xFB: // EI
       cpu->iff1 = 1;
+      cpu->iff2 = 1;
       break;
     case 0xFC: // CALL M, nn
       cpu->wz = fWord(cpu);
@@ -1441,8 +1445,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       break;
     case 0x5B: // LD DE, (nn)
       cpu->wz = fWord(cpu);
-      cpu->regs[REG_E] = memory[cpu->wz];
-      cpu->regs[REG_D] = memory[cpu->wz + 1];
+      set_de(cpu, mread16(cpu->wz));
       break;
     case 0x5E: // IM 2
       cpu->im = 2;
@@ -1467,9 +1470,23 @@ void MiscInstruction(VirtZ80 *cpu) {
       mwrite16(fWord(cpu), HL(cpu));
       break;
     case 0x67: // RRD
-      temp1 = memory[HL(cpu)];
-      memory[HL(cpu)] = (memory[HL(cpu)] << 4) | (temp1 >> 4);
-      cpu->regs[REG_A] = temp1 & 0x0F;
+      {
+        temp1 = mread8(HL(cpu));
+        uint8_t temp_a = cpu->regs[REG_A];
+        cpu->regs[REG_A] = (temp_a & 0xF0) | (temp1 & 0x0F);
+        mwrite8(HL(cpu), (temp1 >> 4) | ((temp_a & 0x0F) << 4));
+
+        uint8_t new_f = 0;
+
+        if (cpu->regs[REG_A] & 0x80) new_f |= FLAG_S;
+        if (cpu->regs[REG_A] == 0) new_f |= FLAG_Z;
+        if (__builtin_parity(cpu->regs[REG_A]) == 0) new_f |= FLAG_PV;
+
+        cpu->flags = (cpu->flags & ~(FLAG_S | FLAG_Z | FLAG_PV)) | new_f;
+        setFlag(cpu, FLAG_N | FLAG_H, 0);
+
+        update_flagsYX(cpu, cpu->regs[REG_A]);
+      }
       break;
     case 0x68: // IN L, (C)
       cpu->regs[REG_L] = InputHandler(cpu->regs[REG_C]);
@@ -1484,9 +1501,23 @@ void MiscInstruction(VirtZ80 *cpu) {
       set_hl(cpu, mread16(fWord(cpu)));
       break;
     case 0x6F: // RLD
-      temp1 = memory[HL(cpu)];
-      memory[HL(cpu)] = (temp1 >> 4) | (memory[HL(cpu)] << 4);
-      cpu->regs[REG_A] = temp1 & 0x0F;
+      {
+        temp1 = mread8(HL(cpu));
+        uint8_t temp_a = cpu->regs[REG_A];
+        cpu->regs[REG_A] = (temp_a & 0xF0) | (temp1 >> 4);
+        mwrite8(HL(cpu), (temp1 << 4) | (temp_a & 0x0F));
+
+        uint8_t new_f = 0;
+
+        if (cpu->regs[REG_A] & 0x80) new_f |= FLAG_S;
+        if (cpu->regs[REG_A] == 0) new_f |= FLAG_Z;
+        if (__builtin_parity(cpu->regs[REG_A]) == 0) new_f |= FLAG_PV;
+
+        cpu->flags = (cpu->flags & ~(FLAG_S | FLAG_Z | FLAG_PV)) | new_f;
+        setFlag(cpu, FLAG_N | FLAG_H, 0);
+
+        update_flagsYX(cpu, cpu->regs[REG_A]);
+      }
       break;
     case 0x71: // OUT (C), 0
       OutputHandler(cpu->regs[REG_C], 0);
