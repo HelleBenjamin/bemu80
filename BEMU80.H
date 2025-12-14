@@ -4,7 +4,6 @@
 #ifndef BEMU80_H
 #define BEMU80_H
 
-#include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -2,7 +2,6 @@
  * Copyright (c) 2025 Benjamin Helle
 */ 
 #include "BEMU80.H"
-#include <cstdint>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -11,7 +10,7 @@
 #include <pthread.h>
 
 bool print_ins = false;
-bool input_tread_stop = false;
+bool input_thread_stop = false;
 
 uint8_t memory[MEM_SIZE]; /* global memory */
 
@@ -117,8 +116,7 @@ static inline char pop_char() {
 
 void* input_thread(void* arg) { /* Small simple input function */
   int ch;
-
-  while (!input_tread_stop) {
+  while (!input_thread_stop) {
     ch = getchar(); 
     if (ch != EOF) {
       push_char(ch);
@@ -177,7 +175,6 @@ static inline void setFlag(VirtZ80 *cpu, uint8_t flag, uint8_t value) {
 }
 
 void OutputHandler(uint8_t port, uint8_t value) {
-  //printf("output port: %02x value: %02x\n", port, value);
   if (port == STD_PORT) { 
     printf("%c", value);
     fflush(stdout); // need to flush to work without '\n' newline. 
@@ -188,7 +185,6 @@ uint8_t InputHandler(uint8_t port) {
   char input = 0;
   if (port == STD_PORT) input = pop_char(); // STDIN
   if (port == 0x80) input = char_buf.count; /* What to do with this?*/
-  //printf("ASCII CODE: %02x", input);
   return input;
 }
 
@@ -635,8 +631,6 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x07: // RLCA
       { /* Dirty way to do this */
         uint16_t result = (cpu->regs[REG_A] << 1) | (cpu->regs[REG_A] >> 7);
-        //if (result & 0x100) setFlag(cpu, FLAG_C, 1);
-        //else setFlag(cpu, FLAG_C, 0);
         setFlag(cpu, FLAG_C, (result & 0x100) >> 8);
         setFlag(cpu, FLAG_N | FLAG_H, 0);
 
@@ -752,8 +746,6 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0x22: // LD (nn), HL
       mwrite16(fWord(cpu), HL(cpu));
-      //memory[cpu->wz] = cpu->regs[REG_L];
-      //memory[cpu->wz + 1] = cpu->regs[REG_H];
       break;
     case 0x23: // INC HL
       set_hl(cpu, inc16(HL(cpu)));
@@ -781,9 +773,6 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0x2A: // LD HL, (nn)
       set_hl(cpu, mread16(fWord(cpu)));
-      /*cpu->wz = fWord(cpu);
-      cpu->regs[REG_L] = memory[cpu->wz];
-      cpu->regs[REG_H] = memory[cpu->wz + 1];*/
       break;
     case 0x2B: // DEC HL
       set_hl(cpu, dec16(HL(cpu)));
@@ -814,8 +803,6 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0x32: // LD (nn), A
       mwrite8(fWord(cpu), cpu->regs[REG_A]);
-      /*cpu->wz = fWord(cpu);
-      memory[cpu->wz] = cpu->regs[REG_A];*/
       break;
     case 0x33: // INC SP
       cpu->sp += 1;
@@ -1402,9 +1389,6 @@ void MiscInstruction(VirtZ80 *cpu) {
       break;
     case 0x4B: // LD BC, (nn)
       set_bc(cpu, mread16(fWord(cpu)));
-      /*cpu->wz = fWord(cpu);
-      cpu->regs[REG_C] = memory[cpu->wz];
-      cpu->regs[REG_B] = memory[cpu->wz + 1];*/
       break;
     case 0x4D: // RETI
       cpu->pc = pop(cpu);
@@ -1682,18 +1666,9 @@ void MiscInstruction(VirtZ80 *cpu) {
   }
 }
 
-/*
-    case ALU_OP_RES:
-      result = dest8 & ~(1 << source8);
-      break;
-    case ALU_OP_SET:
-      result = dest8| (1 << source8);
-      break;
-*/
 
 void BitInstruction(VirtZ80 *cpu) {
   uint8_t opcode = fByte(cpu);
-  //if (debug) printf("BitInstruction: 0x%02x\n", opcode);
   switch (opcode) {
     case 0x00: // RLC reg
     case 0x01:
@@ -1833,7 +1808,6 @@ void BitInstruction(VirtZ80 *cpu) {
 
 void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do this
   uint8_t opcode = fByte(cpu);
-  //if (debug) printf("IX/IY Instruction: 0x%02x\n", opcode);
   switch (opcode) {
     case 0x09: // ADD IX/IY, BC
       *index_reg = add16(cpu, *index_reg, BC(cpu));
@@ -1992,13 +1966,11 @@ int main(int argc, char **argv) {
   printf("CPU State: ");
   printState(&cpu);
   
-  input_tread_stop = true;
+  input_thread_stop = true;
   pthread_cancel(input_thread_thread);
   pthread_join(input_thread_thread, NULL);
 
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // Restore old settings
 
-  //stackTrace(&cpu, 10);
-  //printMemory(&cpu);
   return 0;
 }
