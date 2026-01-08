@@ -1841,7 +1841,6 @@ void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do th
     case 0x39: // ADD IX/IY, SP
       *index_reg = add16(cpu, *index_reg, cpu->sp);
       break;
-
     case 0xE1: // POP IX/IY
       *index_reg = pop(cpu);
       break;
@@ -1967,7 +1966,7 @@ int main(int argc, char **argv) {
   printState(&cpu);
   
   input_thread_stop = true;
-  pthread_cancel(input_thread_thread);
+  pthread_cancel(input_thread_thread); /* Use pthread_kill(input_thread_thread, 0) if not working*/
   pthread_join(input_thread_thread, NULL);
 
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // Restore old settings

@@ -6,6 +6,8 @@ but expect to find bugs and missing features. If you find any bugs, please repor
 
 There are currently two branches: main and development. The main branch is stable and the development branch is unstable(and possibly buggy). You should use the main branch unless you're a developer and want to test new features.
 
+See https://github.com/HelleBenjamin/bemu80-basic to get modified BASIC 4.7 for the emulator.
+
 This repository contains the source code of modified BASIC 4.7 for the Bemu80 emulator. See `basic/README` for more information.
 
 Building
