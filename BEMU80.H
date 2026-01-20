@@ -86,6 +86,14 @@ typedef struct {
 
 void execute(VirtZ80 *cpu);
 
+static inline void mwrite8(uint16_t address, uint8_t value);
+static inline uint8_t mread8(uint16_t address);
+static inline void mwrite16(uint16_t address, uint16_t value);
+static inline uint16_t mread16( uint16_t address);
+
+static inline uint8_t fByte(VirtZ80 *cpu);
+static inline uint16_t fWord(VirtZ80 *cpu);
+
 void OutputHandler(uint8_t port, uint8_t value);
 uint8_t InputHandler(uint8_t port);
 

@@ -2,6 +2,7 @@
  * Copyright (c) 2025 Benjamin Helle
 */ 
 #include "BEMU80.H"
+#include <cstdint>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -24,6 +25,7 @@ static inline void set_af(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_A] = (va
 static inline void set_bc(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_B] = (value >> 8) & 0xFF; cpu->regs[REG_C] = value & 0xFF; }
 static inline void set_de(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_D] = (value >> 8) & 0xFF; cpu->regs[REG_E] = value & 0xFF; }
 static inline void set_hl(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_H] = (value >> 8) & 0xFF; cpu->regs[REG_L] = value & 0xFF; }
+static inline uint16_t get_index_addr(VirtZ80* cpu, uint16_t base) { return base + (int8_t)fByte(cpu); }
 
 static inline void mwrite8(uint16_t address, uint8_t value) { 
   if (address >= MEM_SIZE) return; /* TODO: error handling */
@@ -1806,6 +1808,135 @@ void BitInstruction(VirtZ80 *cpu) {
   }
 }
 
+void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
+  uint16_t addr = get_index_addr(cpu, *index_reg);
+  uint8_t opcode = fByte(cpu);
+  switch (opcode) {
+    case 0x00: // RLC reg
+    case 0x01:
+    case 0x02:
+    case 0x03:
+    case 0x04:
+    case 0x05:
+    case 0x07:
+      cpu->regs[(opcode & 0x07)] = rlc8(cpu, mread8(addr)); //rlc8(cpu, cpu->regs[(opcode & 0x07)]);
+      break;
+    case 0x06: // RLC (i+d)
+      mwrite8(addr, rlc8(cpu, mread8(addr)));
+      break;
+
+    case 0x08: // RRC reg
+    case 0x09:
+    case 0x0A:
+    case 0x0B:
+    case 0x0C:
+    case 0x0D:
+    case 0x0F:
+      cpu->regs[((opcode-8) & 0x07)] = rrc8(cpu, mread8(addr));
+      break;
+    case 0x0E: // RRC (i+d)
+      mwrite8(addr, rrc8(cpu, mread8(addr)));
+      break;
+    
+    case 0x10: // RL reg
+    case 0x11:
+    case 0x12:
+    case 0x13:
+    case 0x14:
+    case 0x15:
+    case 0x17:
+      cpu->regs[(opcode & 0x07)] = rl8(cpu, mread8(addr));
+      break;
+    case 0x16: // RL (i+d)
+      mwrite8(addr, rl8(cpu, mread8(addr)));
+      break;
+
+    case 0x18: // RR reg
+    case 0x19:
+    case 0x1A:
+    case 0x1B:
+    case 0x1C:
+    case 0x1D:
+    case 0x1F:
+      cpu->regs[((opcode-8) & 0x07)] = rr8(cpu, mread8(addr));
+      break;
+    case 0x1E: // RR (i+d)
+      mwrite8(addr, rr8(cpu, mread8(addr)));
+      break;
+
+    case 0x20: // SLA reg
+    case 0x21:
+    case 0x22:
+    case 0x23:
+    case 0x24:
+    case 0x25:
+    case 0x27:
+      cpu->regs[(opcode & 0x07)] = sla8(cpu, mread8(addr));
+      break;
+    case 0x26: // SLA (i+d)
+      mwrite8(addr, sla8(cpu, mread8(addr)));
+      break;
+
+    case 0x28: // SRA reg
+    case 0x29:
+    case 0x2A:
+    case 0x2B:
+    case 0x2C:
+    case 0x2D:
+    case 0x2F:
+      cpu->regs[((opcode-8) & 0x07)] = sra8(cpu, mread8(addr));
+      break;
+    case 0x2E: // SRA (i+d)
+      mwrite8(addr, sra8(cpu, mread8(addr)));
+      break;
+
+    case 0x30: // SLL reg
+    case 0x31:
+    case 0x32:
+    case 0x33:
+    case 0x34:
+    case 0x35:
+    case 0x37:
+      cpu->regs[(opcode & 0x07)] = sll8(cpu, mread8(addr));
+      break;
+    case 0x36: // SLL (i+d)
+      mwrite8(addr, sll8(cpu, mread8(addr)));
+      break;
+
+    case 0x38: // SRL reg
+    case 0x39:
+    case 0x3A:
+    case 0x3B:
+    case 0x3C:
+    case 0x3D:
+    case 0x3F:
+      cpu->regs[((opcode-8) & 0x07)] = srl8(cpu, mread8(addr));
+      break;
+    case 0x3E: // SRL (i+d)
+      mwrite8(addr, srl8(cpu, mread8(addr)));
+      break;
+    default:
+      break;
+  }
+  if (opcode >= 0x40 && opcode <= 0x7F) { /* BIT */
+    uint8_t bit = (opcode >> 3) & 0x07;
+    
+    bit8(cpu, mread8(addr), bit);
+
+  } else if (opcode >= 0x80 && opcode <= 0xBF) { /* RES*/
+    uint8_t bit = (opcode >> 3) & 0x07;
+    
+    mwrite8(addr,res8(cpu, mread8(addr), bit));
+
+  } else if (opcode >= 0xC0 && opcode <= 0xFF) { /* SET*/
+    uint8_t bit = (opcode >> 3) & 0x07;
+
+    mwrite8(addr,set8(cpu, mread8(addr), bit));
+
+  }
+}
+
+
 void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do this
   uint8_t opcode = fByte(cpu);
   switch (opcode) {
@@ -1840,6 +1971,9 @@ void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do th
       break;
     case 0x39: // ADD IX/IY, SP
       *index_reg = add16(cpu, *index_reg, cpu->sp);
+      break;
+    case 0xCB: /* Index bit instructions */
+      BitInstructionIndex(cpu, index_reg);
       break;
     case 0xE1: // POP IX/IY
       *index_reg = pop(cpu);
