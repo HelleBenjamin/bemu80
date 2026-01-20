@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
  * Copyright (c) 2025 Benjamin Helle
 */ 
-#include "BEMU80.H"
-#include <cstdint>
+#include "bemu80.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
