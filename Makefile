@@ -15,7 +15,7 @@ ASMFLAGS := -mz80 -b
 .PHONY: all
 
 all:
-	$(CC) $(CFLAGS) -o bemu80 BEMU80.C
+	$(CC) $(CFLAGS) -o bemu80 bemu80.c
 
 install:
 	sudo cp bemu80 /usr/local/bin
