@@ -12,6 +12,8 @@
 bool print_ins = false;
 bool input_thread_stop = false;
 
+VirtZ80 cpu;
+
 uint8_t memory[MEM_SIZE]; /* global memory */
 
 /* register functions */
@@ -610,24 +612,31 @@ void MainInstruction(VirtZ80 *cpu) {
   int8_t reladdr = 0;
   switch (opcode) {
     case 0x00: // NOP
+      cpu->cycles += 4;
       break;
     case 0x01: // LD BC, nn
       set_bc(cpu, fWord(cpu));
+      cpu->cycles += 10;
       break;
     case 0x02: // LD (BC), A
       mwrite8(BC(cpu), cpu->regs[REG_A]);
+      cpu->cycles += 7;
       break;
     case 0x03: // INC BC
       set_bc(cpu, inc16(BC(cpu)));
+      cpu->cycles += 6;
       break;
     case 0x04: // INC B
       cpu->regs[REG_B] = inc8(cpu, cpu->regs[REG_B]);
+      cpu->cycles += 4;
       break;
     case 0x05: // DEC B
       cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
+      cpu->cycles += 4;
       break;
     case 0x06: // LD B, n
       cpu->regs[REG_B] = fByte(cpu);
+      cpu->cycles += 7;
       break;
     case 0x07: // RLCA
       { /* Dirty way to do this */
@@ -639,27 +648,35 @@ void MainInstruction(VirtZ80 *cpu) {
 
         update_flagsYX(cpu, cpu->regs[REG_A]);
       }
+      cpu->cycles += 4;
       break;
     case 0x08: // EX AF, AF'
       exchange_af(cpu);
+      cpu->cycles += 4;
       break;
     case 0x09: // ADD HL, BC
       set_hl(cpu, add16(cpu, HL(cpu), BC(cpu)));
+      cpu->cycles += 11;
       break;
     case 0x0A: // LD A, (BC)
       cpu->regs[REG_A] = mread8(BC(cpu));
+      cpu->cycles += 7;
       break;
     case 0x0B: // DEC BC
       set_bc(cpu, dec16(BC(cpu)));
+      cpu->cycles += 6;
       break;
     case 0x0C: // INC C
       cpu->regs[REG_C] = inc8(cpu, cpu->regs[REG_C]);
+      cpu->cycles += 4;
       break;
     case 0x0D: // DEC C
       cpu->regs[REG_C] = dec8(cpu, cpu->regs[REG_C]);
+      cpu->cycles += 4;
       break;
     case 0x0E: // LD C, n
       cpu->regs[REG_C] = fByte(cpu);
+      cpu->cycles += 7;
       break;
     case 0x0F: // RRCA
       {
@@ -673,27 +690,35 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x10: // DJNZ d
       cpu->regs[REG_B] = cpu->regs[REG_B] - 1;
       reladdr = (int8_t)fByte(cpu);
+      cpu->cycles += 8;
       if (cpu->regs[REG_B] != 0) {
         cpu->pc += (int8_t)reladdr; /* Treat as signed */
+        cpu->cycles += 5;
       }
       break;
     case 0x11: // LD DE, nn
       set_de(cpu, fWord(cpu));
+      cpu->cycles += 5;
       break;
     case 0x12: // LD (DE), A
       mwrite8(DE(cpu), cpu->regs[REG_A]);
+      cpu->cycles += 7;
       break;
     case 0x13: // INC DE
       set_de(cpu, inc16(DE(cpu)));
+      cpu->cycles += 6;
       break;
     case 0x14: // INC D
       cpu->regs[REG_D] = inc8(cpu, cpu->regs[REG_D]);
+      cpu->cycles += 4;
       break;
     case 0x15: // DEC D
       cpu->regs[REG_D] = dec8(cpu, cpu->regs[REG_D]);
+      cpu->cycles += 4;
       break;
     case 0x16: // LD D, n
       cpu->regs[REG_D] = fByte(cpu);
+      cpu->cycles += 7;
       break;
     case 0x17: // RLA
       {
@@ -705,27 +730,35 @@ void MainInstruction(VirtZ80 *cpu) {
 
         update_flagsYX(cpu, cpu->regs[REG_A]);
       }
+      cpu->cycles += 4;
       break;
     case 0x18: // JR d
       cpu->pc += (int8_t)fByte(cpu);
+      cpu->cycles += 12;
       break;
     case 0x19: // ADD HL, DE
       set_hl(cpu, add16(cpu, HL(cpu), DE(cpu)));
+      cpu->cycles += 11;
       break;
     case 0x1A: // LD A, (DE)
       cpu->regs[REG_A] = mread8(DE(cpu));
+      cpu->cycles += 7;
       break;
     case 0x1B: // DEC DE
       set_de(cpu, dec16(DE(cpu)));
+      cpu->cycles += 6;
       break;
     case 0x1C: // INC E
       cpu->regs[REG_E] = inc8(cpu, cpu->regs[REG_E]);
+      cpu->cycles += 4;
       break;
     case 0x1D: // DEC E
       cpu->regs[REG_E] = dec8(cpu, cpu->regs[REG_E]);
+      cpu->cycles += 4;
       break;
     case 0x1E: // LD E, n
       cpu->regs[REG_E] = fByte(cpu);
+      cpu->cycles += 7;
       break;
     case 0x1F: // RRA
       {
@@ -735,122 +768,159 @@ void MainInstruction(VirtZ80 *cpu) {
 
         update_flagsYX(cpu, cpu->regs[REG_A]);
       }
+      cpu->cycles += 4;
       break;
     case 0x20: // JR NZ, d
       reladdr = (int8_t)fByte(cpu);
+      cpu->cycles += 7;
       if (getFlag(cpu, FLAG_Z) == 0) {
         cpu->pc += (int8_t)reladdr;
+        cpu->cycles += 5;
       }
       break;
     case 0x21: // LD HL, nn
       set_hl(cpu, fWord(cpu));
+      cpu->cycles += 10;
       break;
     case 0x22: // LD (nn), HL
       mwrite16(fWord(cpu), HL(cpu));
+      cpu->cycles += 16;
       break;
     case 0x23: // INC HL
       set_hl(cpu, inc16(HL(cpu)));
+      cpu->cycles += 6;
       break;
     case 0x24: // INC H
       cpu->regs[REG_H] = inc8(cpu, cpu->regs[REG_H]);
+      cpu->cycles += 4;
       break;
     case 0x25: // DEC H
       cpu->regs[REG_H] = dec8(cpu, cpu->regs[REG_H]);
+      cpu->cycles += 4;
       break;
     case 0x26: // LD H, n
       cpu->regs[REG_H] = fByte(cpu);
+      cpu->cycles += 7;
       break;
     case 0x27: // DAA
       // TODO
+      cpu->cycles += 4;
       break;
     case 0x28: // JR Z, d
       reladdr = (int8_t)fByte(cpu);
+      cpu->cycles += 7;
       if (getFlag(cpu, FLAG_Z) == 1) {
         cpu->pc += (int8_t)reladdr;
+        cpu->cycles += 5;
       }
       break;
     case 0x29: // ADD HL, HL
       set_hl(cpu, add16(cpu, HL(cpu), HL(cpu)));
+      cpu->cycles += 11;
       break;
     case 0x2A: // LD HL, (nn)
       set_hl(cpu, mread16(fWord(cpu)));
+      cpu->cycles += 16;
       break;
     case 0x2B: // DEC HL
       set_hl(cpu, dec16(HL(cpu)));
+      cpu->cycles += 6;
       break;
     case 0x2C: // INC L
       cpu->regs[REG_L] = inc8(cpu, cpu->regs[REG_L]);
+      cpu->cycles += 4;
       break;
     case 0x2D: // DEC L
       cpu->regs[REG_L] = dec8(cpu, cpu->regs[REG_L]);
+      cpu->cycles += 4;
       break;
     case 0x2E: // LD L, n
       cpu->regs[REG_L] = fByte(cpu);
+      cpu->cycles += 7;
       break;
     case 0x2F: // CPL
       cpu->regs[REG_A] = ~cpu->regs[REG_A];
       setFlag(cpu, FLAG_N | FLAG_H, 1);
       update_flagsYX(cpu, cpu->regs[REG_A]);
+      cpu->cycles += 4;
       break;
     case 0x30: // JR NC, d
       reladdr = (int8_t)fByte(cpu);
+      cpu->cycles += 7;
       if (getFlag(cpu, FLAG_C) == 0) {
         cpu->pc += (int8_t)reladdr;
+        cpu->cycles += 5;
         break;
       }
       break;
     case 0x31: // LD SP, nn
       cpu->sp = fWord(cpu);
+      cpu->cycles += 10;
       break;
     case 0x32: // LD (nn), A
       mwrite8(fWord(cpu), cpu->regs[REG_A]);
+      cpu->cycles += 13;
       break;
     case 0x33: // INC SP
       cpu->sp += 1;
+      cpu->cycles += 6;
       break;
     case 0x34: // INC (HL)
       mwrite8(HL(cpu), inc8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 11;
       break;
     case 0x35: // DEC (HL)
       mwrite8(HL(cpu), dec8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 11;
       break;
     case 0x36: // LD (HL), n
       mwrite8(HL(cpu), fByte(cpu));
+      cpu->cycles += 10;
       break;
     case 0x37: // SCF
       setFlag(cpu, FLAG_C, 1);
       setFlag(cpu, FLAG_N | FLAG_H, 0);
       update_flagsYX(cpu, cpu->regs[REG_A]);
+      cpu->cycles += 4;
       break;
     case 0x38: // JR C, d
       reladdr = (int8_t)fByte(cpu);
+      cpu->cycles += 7;
       if (getFlag(cpu, FLAG_C) == 1) {
         cpu->pc += (int8_t)reladdr;
+        cpu->cycles += 5;
       }
       break;
     case 0x39: // ADD HL, SP
       set_hl(cpu, add16(cpu, HL(cpu), cpu->sp));
+      cpu->cycles += 11;
       break;
     case 0x3A: // LD A, (nn)
       cpu->regs[REG_A] = mread8(fWord(cpu));
+      cpu->cycles += 13;
       break;
     case 0x3B: // DEC SP
       cpu->sp -= 1;
+      cpu->cycles += 6;
       break;
     case 0x3C: // INC A
       cpu->regs[REG_A] = inc8(cpu, cpu->regs[REG_A]);
+      cpu->cycles += 4;
       break;
     case 0x3D: // DEC A
       cpu->regs[REG_A] = dec8(cpu, cpu->regs[REG_A]);
+      cpu->cycles += 4;
       break;
     case 0x3E: // LD A, n
       cpu->regs[REG_A] = fByte(cpu);
+      cpu->cycles += 7;
       break;
     case 0x3F: // CCF
       setFlag(cpu, FLAG_H, getFlag(cpu, FLAG_C));
       setFlag(cpu, FLAG_C, getFlag(cpu, FLAG_C) ^ 1);
       setFlag(cpu, FLAG_N, 0);
       update_flagsYX(cpu, cpu->regs[REG_A]);
+      cpu->cycles += 4;
       break;
     case 0x40: /*LD B, reg */
     case 0x41:
@@ -860,9 +930,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x45:
     case 0x47:
       cpu->regs[REG_B] = cpu->regs[opcode & 0x07];
+      cpu->cycles += 4;
       break;
     case 0x46: // LD B, (HL)
       cpu->regs[REG_B] = mread8(HL(cpu));
+      cpu->cycles += 7;
       break;
     case 0x48: // LD C, reg
     case 0x49:
@@ -872,9 +944,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x4D:
     case 0x4F:
       cpu->regs[REG_C] = cpu->regs[(opcode-8) & 0x07];
+      cpu->cycles += 4;
       break;
     case 0x4E: // LD C, (HL)
       cpu->regs[REG_C] = mread8(HL(cpu));
+      cpu->cycles += 7;
       break;
 
     case 0x50: // LD D, reg
@@ -885,9 +959,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x55:
     case 0x57:
       cpu->regs[REG_D] = cpu->regs[opcode & 0x07];
+      cpu->cycles += 4;
       break;
     case 0x56: // LD D, (HL)
       cpu->regs[REG_D] = mread8(HL(cpu));
+      cpu->cycles += 7;
       break;
 
     case 0x58: // LD E, reg
@@ -898,9 +974,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x5D:
     case 0x5F:
       cpu->regs[REG_E] = cpu->regs[(opcode-8) & 0x07];
+      cpu->cycles += 4;
       break;
     case 0x5E: // LD E, (HL)
       cpu->regs[REG_E] = mread8(HL(cpu));
+      cpu->cycles += 7;
       break;
 
     case 0x60: // LD H, reg
@@ -911,9 +989,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x65:
     case 0x67:
       cpu->regs[REG_H] = cpu->regs[opcode & 0x07];
+      cpu->cycles += 4;
       break;
     case 0x66: // LD H, (HL)
       cpu->regs[REG_H] = mread8(HL(cpu));
+      cpu->cycles += 7;
       break;
 
     case 0x68: // LD L, reg
@@ -924,9 +1004,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x6D:
     case 0x6F:
       cpu->regs[REG_L] = cpu->regs[(opcode-8) & 0x07];
+      cpu->cycles += 4;
       break;
     case 0x6E: // LD L, (HL)
       cpu->regs[REG_L] = mread8(HL(cpu));
+      cpu->cycles += 7;
       break;
 
     case 0x70: // LD (HL), reg
@@ -937,11 +1019,13 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x75:
     case 0x77:
       mwrite8(HL(cpu), cpu->regs[opcode & 0x07]);
+      cpu->cycles += 7;
       break;
 
     case 0x76: // HALT
       cpu->halt = true;
       cpu->pc--; /* Don't increment PC*/
+      cpu->cycles += 4;
       break;
 
     case 0x78: // LD A, reg
@@ -952,9 +1036,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x7D:
     case 0x7F:
       cpu->regs[REG_A] = cpu->regs[(opcode-8) & 0x07];
+      cpu->cycles += 4;
       break;
     case 0x7E: // LD A, (HL)
       cpu->regs[REG_A] = mread8(HL(cpu));
+      cpu->cycles += 7;
       break;
 
     case 0x80: // ADD A, reg
@@ -965,9 +1051,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x85:
     case 0x87:
       cpu->regs[REG_A] = add8(cpu, cpu->regs[REG_A], cpu->regs[(opcode & 0x07)]);
+      cpu->cycles += 4;
       break;
     case 0x86: // ADD A, (HL)
       cpu->regs[REG_A] = add8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
+      cpu->cycles += 7;
       break;
 
     case 0x88: // ADC A, reg
@@ -978,9 +1066,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x8D:
     case 0x8F:
       cpu->regs[REG_A] = adc8(cpu, cpu->regs[REG_A], cpu->regs[((opcode-8) & 0x07)]);
+      cpu->cycles += 4;
       break;
     case 0x8E: // ADC A, (HL)
       cpu->regs[REG_A] = adc8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
+      cpu->cycles += 7;
       break;
 
     case 0x90: // SUB A, reg
@@ -991,9 +1081,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x95:
     case 0x97:
       cpu->regs[REG_A] = sub8(cpu, cpu->regs[REG_A], cpu->regs[(opcode & 0x07)]);
+      cpu->cycles += 4;
       break;
     case 0x96: // SUB A, (HL)
       cpu->regs[REG_A] = sub8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
+      cpu->cycles += 7;
       break;
 
     case 0x98: // SBC A, reg
@@ -1004,9 +1096,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0x9D:
     case 0x9F:
       cpu->regs[REG_A] = sbc8(cpu, cpu->regs[REG_A], cpu->regs[((opcode-8) & 0x07)]);
+      cpu->cycles += 4;
       break;
     case 0x9E: // SBC A, (HL)
       cpu->regs[REG_A] = sbc8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
+      cpu->cycles += 7;
       break;
 
     case 0xA0: // AND A, reg
@@ -1017,9 +1111,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0xA5:
     case 0xA7:
       cpu->regs[REG_A] = and8(cpu, cpu->regs[REG_A], cpu->regs[(opcode & 0x07)]);
+      cpu->cycles += 4;
       break;
     case 0xA6: // AND A, (HL)
       cpu->regs[REG_A] = and8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
+      cpu->cycles += 7;
       break;
 
     case 0xA8: // XOR A, reg
@@ -1030,9 +1126,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0xAD:
     case 0xAF:
       cpu->regs[REG_A] = xor8(cpu, cpu->regs[REG_A], cpu->regs[((opcode-8) & 0x07)]);
+      cpu->cycles += 4;
       break;
     case 0xAE: // XOR A, (HL)
       cpu->regs[REG_A] = xor8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
+      cpu->cycles += 7;
       break;
 
     case 0xB0: // OR A, reg
@@ -1043,9 +1141,11 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0xB5:
     case 0xB7:
       cpu->regs[REG_A] = or8(cpu, cpu->regs[REG_A], cpu->regs[(opcode & 0x07)]);
+      cpu->cycles += 4;
       break;
     case 0xB6: // OR A, (HL)
       cpu->regs[REG_A] = or8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
+      cpu->cycles += 7;
       break;
 
     case 0xB8: // CP A, reg
@@ -1056,141 +1156,179 @@ void MainInstruction(VirtZ80 *cpu) {
     case 0xBD:
     case 0xBF:
       cp8(cpu, cpu->regs[REG_A], cpu->regs[((opcode-8) & 0x07)]); /* Same as sub, but doesn't modify A */
+      cpu->cycles += 4;
       break;
     case 0xBE: // CP A, (HL)
       cp8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
+      cpu->cycles += 7;
       break;
     
     case 0xC0: // RET NZ
+      cpu->cycles += 5;
       if (getFlag(cpu, FLAG_Z) == 0) {
         cpu->pc = pop(cpu);
+        cpu->cycles += 6;
       }
       break;
     case 0xC1: // POP BC
       set_bc(cpu, pop(cpu));
+      cpu->cycles += 10;
       break;
     case 0xC2: // JP NZ, nn
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_Z) == 0) {
         cpu->pc = cpu->wz;
       }
+      cpu->cycles += 10;
       break;
     case 0xC3: // JP nn
       cpu->wz = fWord(cpu);
       cpu->pc = cpu->wz;
+      cpu->cycles += 10;
       break;
     case 0xC4: // CALL NZ, nn
       cpu->wz = fWord(cpu);
+      cpu->cycles += 10;
       if (getFlag(cpu, FLAG_Z) == 0) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
+        cpu->cycles += 7;
       }
       break;
     case 0xC5: // PUSH BC
       push(cpu, BC(cpu));
+      cpu->cycles += 10;
       break;
     case 0xC6: // ADD A, n
       cpu->regs[REG_A] = add8(cpu, cpu->regs[REG_A], fByte(cpu));
+      cpu->cycles += 7;
       break;
     case 0xC7: // RST 0h
       push(cpu, cpu->pc);
       cpu->pc = 0x00;
+      cpu->cycles += 11;
       break;
     case 0xC8: // RET Z
+      cpu->cycles += 5;
       if (getFlag(cpu, FLAG_Z)) {
         cpu->pc = pop(cpu);
         break;
+        cpu->cycles += 6;
       }
       break;
     case 0xC9: // RET
       cpu->pc = pop(cpu);
+      cpu->cycles += 10;
       break;
     case 0xCA: // JP Z, nn
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_Z)) {
         cpu->pc = cpu->wz;
       }
+      cpu->cycles += 10;
       break;
     case 0xCB: // Bit instruction
       BitInstruction(cpu);
       break;
     case 0xCC: // CALL Z, nn
+      cpu->cycles += 10;
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_Z)) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
+        cpu->cycles += 7;
       }
       break;
     case 0xCD: // CALL nn
       cpu->wz = fWord(cpu);
       push(cpu, cpu->pc);
       cpu->pc = cpu->wz;
+      cpu->cycles += 17;
       break;
     case 0xCE: // ADC A, n
       cpu->regs[REG_A] = adc8(cpu, cpu->regs[REG_A], fByte(cpu));
+      cpu->cycles += 7;
       break;
     case 0xCF: // RST 8h
       push(cpu, cpu->pc);
       cpu->pc = 0x08;
+      cpu->cycles += 11;
       break;
     case 0xD0: // RET NC
+      cpu->cycles += 5;
       if (getFlag(cpu, FLAG_C) == 0) {
         cpu->pc = pop(cpu);
+        cpu->cycles += 6;
       }
       break;
     case 0xD1: // POP DE
       set_de(cpu, pop(cpu));
+      cpu->cycles += 10;
       break;
     case 0xD2: // JP NC, nn
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_C) == 0) {
         cpu->pc = cpu->wz;
       }
+      cpu->cycles += 10;
       break;
     case 0xD3: // OUT (n), A
       OutputHandler(fByte(cpu), cpu->regs[REG_A]);
+      cpu->cycles += 11;
       break;
     case 0xD4: // CALL NC, nn
       cpu->wz = fWord(cpu);
+      cpu->cycles += 10;
       if (getFlag(cpu, FLAG_C) == 0) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
+        cpu->cycles += 7;
       }
       break;
     case 0xD5: // PUSH DE
       push(cpu, DE(cpu));
+      cpu->cycles += 11;
       break;
     case 0xD6: // SUB A, n
       cpu->regs[REG_A] = sub8(cpu, cpu->regs[REG_A], fByte(cpu));
+      cpu->cycles += 7;
       break;
     case 0xD7: // RST 10h
       push(cpu, cpu->pc);
       cpu->pc = 0x10;
+      cpu->cycles += 11;
       break;
     case 0xD8: // RET C
+      cpu->cycles += 5;
       if (getFlag(cpu, FLAG_C)) {
         cpu->pc = pop(cpu);
+        cpu->cycles += 6;
       }
       break;
     case 0xD9: // EXX
       exchange(cpu, REG_BC, REG_BC, true);
       exchange(cpu, REG_DE, REG_DE, true);
       exchange(cpu, REG_HL, REG_HL, true);
+      cpu->cycles += 4;
       break;
     case 0xDA: // JP C, nn
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_C)) {
         cpu->pc = cpu->wz;
       }
+      cpu->cycles += 10;
       break;
     case 0xDB: // IN A, (n)
       cpu->regs[REG_A] = InputHandler(fByte(cpu));
+      cpu->cycles += 11;
       break;
     case 0xDC: // CALL C, nn
       cpu->wz = fWord(cpu);
+      cpu->cycles += 10;
       if (getFlag(cpu, FLAG_C)) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
+        cpu->cycles += 7;
       }
       break;
     case 0xDD: // IX Prefix
@@ -1198,69 +1336,88 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xDE: // SBC A, n
       cpu->regs[REG_A] = sbc8(cpu, cpu->regs[REG_A], fByte(cpu));
+      cpu->cycles += 7;
       break;
     case 0xDF: // RST 18h
       push(cpu, cpu->pc);
       cpu->pc = 0x18;
+      cpu->cycles += 11;
       break;
     case 0xE0: // RET PO
+      cpu->cycles += 5;
       if (getFlag(cpu, FLAG_PV) == 0) {
         cpu->pc = pop(cpu);
+        cpu->cycles += 6;
       }
       break;
     case 0xE1: // POP HL
       set_hl(cpu, pop(cpu));
+      cpu->cycles += 10;
       break;
     case 0xE2: // JP PO, nn
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_PV) == 0) {
         cpu->pc = cpu->wz;
       }
+      cpu->cycles += 10;
       break;
     case 0xE3: // EX (SP),HL
       cpu->wz = HL(cpu);
       set_hl(cpu, mread16(cpu->sp));
       mwrite16(cpu->sp, cpu->wz);
+      cpu->cycles += 19;
       break;
     case 0xE4: // CALL PO, nn
       cpu->wz = fWord(cpu);
+      cpu->cycles += 10;
       if (getFlag(cpu, FLAG_PV) == 0) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
+        cpu->cycles += 7;
       }
       break;
     case 0xE5: // PUSH HL
-      push(cpu, HL(cpu)); 
+      push(cpu, HL(cpu));
+      cpu->cycles += 11;
       break;
     case 0xE6: // AND A, n
       cpu->regs[REG_A] = and8(cpu, cpu->regs[REG_A], fByte(cpu));
+      cpu->cycles += 7;
       break;
     case 0xE7: // RST 20h
       push(cpu, cpu->pc);
       cpu->pc = 0x20;
+      cpu->cycles += 11;
       break;
     case 0xE8: // RET PE
+      cpu->cycles += 5;
       if (getFlag(cpu, FLAG_PV)) {
         cpu->pc = pop(cpu);
+        cpu->cycles += 6;
       }
       break;
     case 0xE9: // JP (HL)
       cpu->pc = HL(cpu);
+      cpu->cycles += 4;
       break;
     case 0xEA: // JP PE, nn
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_PV)) {
         cpu->pc = cpu->wz;
       }
+      cpu->cycles += 10;
       break;
     case 0xEB: // EX DE,HL
       exchange(cpu, REG_DE, REG_HL, false);
+      cpu->cycles += 4;
       break;
     case 0xEC: // CALL PE, nn
       cpu->wz = fWord(cpu);
+      cpu->cycles += 10;
       if (getFlag(cpu, FLAG_PV)) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
+        cpu->cycles += 7;
       }
       break;
     case 0xED: // Misc. Instructions
@@ -1268,69 +1425,87 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xEE: // XOR A, n
       cpu->regs[REG_A] = xor8(cpu, cpu->regs[REG_A], fByte(cpu));
+      cpu->cycles += 7;
       break;
     case 0xEF: // RST 28h
       push(cpu, cpu->pc);
       cpu->pc = 0x28;
+      cpu->cycles += 11;
       break;
     case 0xF0: // RET P
+      cpu->cycles += 5;
       if (getFlag(cpu, FLAG_S) == 0) {
         cpu->pc = pop(cpu);
+        cpu->cycles += 6;
       }
       break;
     case 0xF1: // POP AF
       set_af(cpu, pop(cpu));
+      cpu->cycles += 10;
       break;
     case 0xF2: // JP P, nn
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_S) == 0) {
         cpu->pc = cpu->wz;
       }
+      cpu->cycles += 10;
       break;
     case 0xF3: // DI
       cpu->iff1 = 0;
       cpu->iff2 = 0;
+      cpu->cycles += 4;
       break;
     case 0xF4: // CALL P, nn
       cpu->wz = fWord(cpu);
+      cpu->cycles += 10;
       if (getFlag(cpu, FLAG_S) == 0) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
+        cpu->cycles += 7;
       }
       break;
     case 0xF5: // PUSH AF
       push(cpu, AF(cpu));
+      cpu->cycles += 11;
       break;
     case 0xF6: // OR A, n
       cpu->regs[REG_A] = or8(cpu, cpu->regs[REG_A], fByte(cpu));
+      cpu->cycles += 7;
       break;
     case 0xF7: // RST 30h
       push(cpu, cpu->pc);
       cpu->pc = 0x30;
       break;
     case 0xF8: // RET M
+      cpu->cycles += 5;
       if (getFlag(cpu, FLAG_S)) {
         cpu->pc = pop(cpu);
+        cpu->cycles += 6;
       }
       break;
     case 0xF9: // LD SP, HL
       cpu->sp = HL(cpu);
+      cpu->cycles += 6;
       break;
     case 0xFA: // JP M, nn
       cpu->wz = fWord(cpu);
       if (getFlag(cpu, FLAG_S)) {
         cpu->pc = cpu->wz;
       }
+      cpu->cycles += 10;
       break;
     case 0xFB: // EI
       cpu->iff1 = 1;
       cpu->iff2 = 1;
+      cpu->cycles += 4;
       break;
     case 0xFC: // CALL M, nn
       cpu->wz = fWord(cpu);
+      cpu->cycles += 10;
       if (getFlag(cpu, FLAG_S)) {
         push(cpu, cpu->pc);
         cpu->pc = cpu->wz;
+        cpu->cycles += 7;
       }
       break;
     case 0xFD: // IY Prefix
@@ -1338,10 +1513,12 @@ void MainInstruction(VirtZ80 *cpu) {
       break;
     case 0xFE: // CP A, n
       cp8(cpu, cpu->regs[REG_A], fByte(cpu));
+      cpu->cycles += 7;
       break;
     case 0xFF: // RST 38h
       push(cpu, cpu->pc);
       cpu->pc = 0x38;
+      cpu->cycles += 11;
       break;
     default:
       break;
@@ -1355,62 +1532,80 @@ void MiscInstruction(VirtZ80 *cpu) {
   switch (opcode) {
     case 0x40: // IN B, (C)
       cpu->regs[REG_B] = InputHandler(cpu->regs[REG_C]);
+      cpu->cycles += 12;
       break;
     case 0x41: // OUT (C), B
       OutputHandler(cpu->regs[REG_C], cpu->regs[REG_B]);
+      cpu->cycles += 12;
       break;
     case 0x42: // SBC HL, BC
       set_hl(cpu, sbc16(cpu, HL(cpu), BC(cpu)));
+      cpu->cycles += 15;
       break;
     case 0x43: // LD (nn), BC
       mwrite16(fWord(cpu), BC(cpu));
+      cpu->cycles += 20;
       break;
     case 0x44: // NEG
-      // Check if working!!
       cpu->regs[REG_A] = sub8(cpu, 0, cpu->regs[REG_A]);
+      cpu->cycles += 8;
       break;
     case 0x45: // RETN
       cpu->pc = pop(cpu);
       cpu->iff1 = cpu->iff2;
+      cpu->cycles += 14;
       break;
     case 0x46: // IM 0
       cpu->im = 0;
+      cpu->cycles += 8;
       break;
     case 0x47: // LD I, A
       cpu->i = cpu->regs[REG_A];
+      cpu->cycles += 9;
       break;
     case 0x48: // IN C, (C)
       cpu->regs[REG_C] = InputHandler(cpu->regs[REG_C]);
+      cpu->cycles += 12;
       break;
     case 0x49: // OUT (C), C
       OutputHandler(cpu->regs[REG_C], cpu->regs[REG_C]);
+      cpu->cycles += 12;
       break;
     case 0x4A: // ADC HL, BC
       set_hl(cpu, adc16(cpu, HL(cpu), BC(cpu)));
+      cpu->cycles += 15;
       break;
     case 0x4B: // LD BC, (nn)
       set_bc(cpu, mread16(fWord(cpu)));
+      cpu->cycles += 20;
       break;
     case 0x4D: // RETI
       cpu->pc = pop(cpu);
+      cpu->cycles += 14;
       break;
     case 0x4F: // LD R, A
       cpu->r = cpu->regs[REG_A];
+      cpu->cycles += 9;
       break;
     case 0x50: // IN D, (C)
       cpu->regs[REG_D] = InputHandler(cpu->regs[REG_C]);
+      cpu->cycles += 12;
       break;
     case 0x51: // OUT (C), D
       OutputHandler(cpu->regs[REG_C], cpu->regs[REG_D]);
+      cpu->cycles += 12;
       break;
     case 0x52: // SBC HL, DE
       set_hl(cpu, sbc16(cpu, HL(cpu), DE(cpu)));
+      cpu->cycles += 15;
       break;
     case 0x53: // LD (nn), DE
       mwrite16(fWord(cpu), DE(cpu));
+      cpu->cycles += 20;
       break;
     case 0x56: // IM 1
       cpu->im = 1;
+      cpu->cycles += 8;
       break;
     case 0x57: // LD A, I
       cpu->regs[REG_A] = cpu->i;
@@ -1418,22 +1613,28 @@ void MiscInstruction(VirtZ80 *cpu) {
       setFlag(cpu, FLAG_Z, cpu->i == 0);
       setFlag(cpu, FLAG_N | FLAG_H, 0);
       setFlag(cpu, FLAG_PV, cpu->iff2);
+      cpu->cycles += 9;
       break;
     case 0x58: // IN E, (C)
       cpu->regs[REG_E] = InputHandler(cpu->regs[REG_C]);
+      cpu->cycles += 12;
       break;
     case 0x59: // OUT (C), E
       OutputHandler(cpu->regs[REG_C], cpu->regs[REG_E]);
+      cpu->cycles += 12;
       break;
     case 0x5A: // ADC HL, DE
       set_hl(cpu, adc16(cpu, HL(cpu), DE(cpu)));
+      cpu->cycles += 15;
       break;
     case 0x5B: // LD DE, (nn)
       cpu->wz = fWord(cpu);
       set_de(cpu, mread16(cpu->wz));
+      cpu->cycles += 20;
       break;
     case 0x5E: // IM 2
       cpu->im = 2;
+      cpu->cycles += 8;
       break;
     case 0x5F: // LD A, R
       cpu->regs[REG_A] = cpu->r;
@@ -1441,18 +1642,23 @@ void MiscInstruction(VirtZ80 *cpu) {
       setFlag(cpu, FLAG_Z, cpu->r == 0);
       setFlag(cpu, FLAG_N | FLAG_H, 0);
       setFlag(cpu, FLAG_PV, cpu->iff2);
+      cpu->cycles += 9;
       break;
     case 0x60: // IN H, (C)
       cpu->regs[REG_H] = InputHandler(cpu->regs[REG_C]);
+      cpu->cycles += 12;
       break;
     case 0x61: // OUT (C), H
       OutputHandler(cpu->regs[REG_C], cpu->regs[REG_H]);
+      cpu->cycles += 12;
       break;
     case 0x62: // SBC HL, HL
       set_hl(cpu, sbc16(cpu, HL(cpu), HL(cpu)));
+      cpu->cycles += 15;
       break;
     case 0x63: // LD (nn), HL
       mwrite16(fWord(cpu), HL(cpu));
+      cpu->cycles += 20;
       break;
     case 0x67: // RRD
       {
@@ -1472,18 +1678,23 @@ void MiscInstruction(VirtZ80 *cpu) {
 
         update_flagsYX(cpu, cpu->regs[REG_A]);
       }
+      cpu->cycles += 18;
       break;
     case 0x68: // IN L, (C)
       cpu->regs[REG_L] = InputHandler(cpu->regs[REG_C]);
+      cpu->cycles += 12;
       break;
     case 0x69: // OUT (C), L
       OutputHandler(cpu->regs[REG_C], cpu->regs[REG_L]);
+      cpu->cycles += 12;
       break;
     case 0x6A: // ADC HL, HL
       set_hl(cpu, adc16(cpu, HL(cpu), HL(cpu)));
+      cpu->cycles += 15;
       break;
     case 0x6B: // LD HL, (nn)
       set_hl(cpu, mread16(fWord(cpu)));
+      cpu->cycles += 20;
       break;
     case 0x6F: // RLD
       {
@@ -1503,27 +1714,35 @@ void MiscInstruction(VirtZ80 *cpu) {
 
         update_flagsYX(cpu, cpu->regs[REG_A]);
       }
+      cpu->cycles += 18;
       break;
     case 0x71: // OUT (C), 0
       OutputHandler(cpu->regs[REG_C], 0);
+      cpu->cycles += 12;
       break;
     case 0x72: // SBC HL, SP
       set_hl(cpu, sbc16(cpu, HL(cpu), cpu->sp));
+      cpu->cycles += 15;
       break;
     case 0x73: // LD (nn), SP
       mwrite16(fWord(cpu), cpu->sp);
+      cpu->cycles += 20;
       break;
     case 0x78: // IN A, (C)
       cpu->regs[REG_A] = InputHandler(cpu->regs[REG_C]);
+      cpu->cycles += 12;
       break;
     case 0x79: // OUT (C), A
       OutputHandler(cpu->regs[REG_C], cpu->regs[REG_A]);
+      cpu->cycles += 12;
       break;
     case 0x7A: // ADC HL, SP
       set_hl(cpu, adc16(cpu, HL(cpu), cpu->sp));
+      cpu->cycles += 15;
       break;
     case 0x7B: // LD SP, (nn)
       cpu->sp = mread16(fWord(cpu));
+      cpu->cycles += 20;
       break;
     case 0xA0: // LDI
       mwrite8(DE(cpu), mread8(HL(cpu)));
@@ -1531,6 +1750,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (BC(cpu) == 0) {
         setFlag(cpu, FLAG_PV, 0);
       } else setFlag(cpu, FLAG_PV, 1);
+      cpu->cycles += 16;
       break;
     case 0xA1: // CPI
       sub8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
@@ -1538,6 +1758,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (BC(cpu) == 0) {
         setFlag(cpu, FLAG_PV, 0);
       } else setFlag(cpu, FLAG_PV, 1);
+      cpu->cycles += 16;
       break;
     case 0xA2: // INI
       mwrite8(HL(cpu), InputHandler(cpu->regs[REG_C]));
@@ -1545,6 +1766,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (cpu->regs[REG_B] == 0) {
         setFlag(cpu, FLAG_PV, 0);
       } else setFlag(cpu, FLAG_PV, 1);
+      cpu->cycles += 16;
       break;
     case 0xA3: // OUTI
       OutputHandler(cpu->regs[REG_C], mread8(HL(cpu)));
@@ -1552,6 +1774,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (cpu->regs[REG_B] == 0) {
         setFlag(cpu, FLAG_PV, 0);
       } else setFlag(cpu, FLAG_PV, 1);
+      cpu->cycles += 16;
       break;
     case 0xA8: // LDD
       mwrite8(DE(cpu), mread8(HL(cpu)));
@@ -1559,6 +1782,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (BC(cpu) == 0) {
         setFlag(cpu, FLAG_PV, 0);
       } else setFlag(cpu, FLAG_PV, 1);
+      cpu->cycles += 16;
       break;
     case 0xA9: // CPD
       sub8(cpu, cpu->regs[REG_A], mread8(HL(cpu)));
@@ -1566,6 +1790,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (BC(cpu) == 0) {
         setFlag(cpu, FLAG_PV, 0);
       } else setFlag(cpu, FLAG_PV, 1);
+      cpu->cycles += 16;
       break;
     case 0xAA: // IND
       mwrite8(HL(cpu), InputHandler(cpu->regs[REG_C]));
@@ -1573,6 +1798,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (cpu->regs[REG_B] == 0) {
         setFlag(cpu, FLAG_PV, 0);
       } else setFlag(cpu, FLAG_PV, 1);
+      cpu->cycles += 16;
       break;
     case 0xAB: // OUTD
       OutputHandler(cpu->regs[REG_C], mread8(HL(cpu)));
@@ -1580,6 +1806,7 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (cpu->regs[REG_B] == 0) {
         setFlag(cpu, FLAG_PV, 0);
       } else setFlag(cpu, FLAG_PV, 1);
+      cpu->cycles += 16;
       break;
     case 0xB0: // LDIR
       mwrite8(DE(cpu), mread8(HL(cpu)));
@@ -1587,8 +1814,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (BC(cpu) != 0) {
         setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
+        cpu->cycles += 21;
       } else {
         setFlag(cpu, FLAG_PV, 0);
+        cpu->cycles += 16;
       }
       break;
     case 0xB1: // CPIR
@@ -1597,8 +1826,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       if ((BC(cpu) != 0) && !(getFlag(cpu, FLAG_Z))) {
         setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
+        cpu->cycles += 21;
       } else {
         setFlag(cpu, FLAG_PV, 0);
+        cpu->cycles += 16;
       }
       break;
     case 0xB2: // INIR
@@ -1607,8 +1838,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (cpu->regs[REG_B] != 0) {
         setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
+        cpu->cycles += 21;
       } else {
         setFlag(cpu, FLAG_PV, 0);
+        cpu->cycles += 16;
       }
       break;
     case 0xB3: // OTIR
@@ -1617,8 +1850,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (cpu->regs[REG_B] != 0) {
         setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
+        cpu->cycles += 21;
       } else {
         setFlag(cpu, FLAG_PV, 0);
+        cpu->cycles += 16;
       }
       break;
     case 0xB8: // LDDR
@@ -1627,8 +1862,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (BC(cpu) != 0) {
         setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
+        cpu->cycles += 21;
       } else {
         setFlag(cpu, FLAG_PV, 0);
+        cpu->cycles += 16;
       }
       break;
     case 0xB9: // CPDR
@@ -1637,8 +1874,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (BC(cpu) != 0 && !(getFlag(cpu, FLAG_Z))) {
         setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
+        cpu->cycles += 21;
       } else {
         setFlag(cpu, FLAG_PV, 0);
+        cpu->cycles += 16;
       }
       break;
     case 0xBA: // INDR
@@ -1647,8 +1886,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (cpu->regs[REG_B] != 0) {
         setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
+        cpu->cycles += 21;
       } else {
         setFlag(cpu, FLAG_PV, 0);
+        cpu->cycles += 16;
       }
       break;
     case 0xBB: // OTDR
@@ -1657,8 +1898,10 @@ void MiscInstruction(VirtZ80 *cpu) {
       if (cpu->regs[REG_B] != 0) {
         setFlag(cpu, FLAG_PV, 1);
         cpu->pc -= 2;
+        cpu->cycles += 21;
       } else {
         setFlag(cpu, FLAG_PV, 0);
+        cpu->cycles += 16;
       }
       break;
     default:
@@ -1679,9 +1922,11 @@ void BitInstruction(VirtZ80 *cpu) {
     case 0x05:
     case 0x07:
       cpu->regs[(opcode & 0x07)] = rlc8(cpu, cpu->regs[(opcode & 0x07)]);
+      cpu->cycles += 8;
       break;
     case 0x06: // RLC (HL)
       mwrite8(HL(cpu), rlc8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 15;
       break;
 
     case 0x08: // RRC reg
@@ -1692,9 +1937,11 @@ void BitInstruction(VirtZ80 *cpu) {
     case 0x0D:
     case 0x0F:
       cpu->regs[((opcode-8) & 0x07)] = rrc8(cpu, cpu->regs[((opcode-8) & 0x07)]);
+      cpu->cycles += 8;
       break;
     case 0x0E: // RRC (HL)
       mwrite8(HL(cpu), rrc8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 15;
       break;
     
     case 0x10: // RL reg
@@ -1705,9 +1952,11 @@ void BitInstruction(VirtZ80 *cpu) {
     case 0x15:
     case 0x17:
       cpu->regs[(opcode & 0x07)] = rl8(cpu, cpu->regs[(opcode & 0x07)]);
+      cpu->cycles += 8;
       break;
     case 0x16: // RL (HL)
       mwrite8(HL(cpu), rl8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 15;
       break;
 
     case 0x18: // RR reg
@@ -1718,9 +1967,11 @@ void BitInstruction(VirtZ80 *cpu) {
     case 0x1D:
     case 0x1F:
       cpu->regs[((opcode-8) & 0x07)] = rr8(cpu, cpu->regs[((opcode-8) & 0x07)]);
+      cpu->cycles += 8;
       break;
     case 0x1E: // RR (HL)
       mwrite8(HL(cpu), rr8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 15;
       break;
 
     case 0x20: // SLA reg
@@ -1731,9 +1982,11 @@ void BitInstruction(VirtZ80 *cpu) {
     case 0x25:
     case 0x27:
       cpu->regs[(opcode & 0x07)] = sla8(cpu, cpu->regs[(opcode & 0x07)]);
+      cpu->cycles += 8;
       break;
     case 0x26: // SLA (HL)
       mwrite8(HL(cpu), sla8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 15;
       break;
 
     case 0x28: // SRA reg
@@ -1744,9 +1997,11 @@ void BitInstruction(VirtZ80 *cpu) {
     case 0x2D:
     case 0x2F:
       cpu->regs[((opcode-8) & 0x07)] = sra8(cpu, cpu->regs[((opcode-8) & 0x07)]);
+      cpu->cycles += 8;
       break;
     case 0x2E: // SRA (HL)
       mwrite8(HL(cpu), sra8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 15;
       break;
 
     case 0x30: // SLL reg
@@ -1757,9 +2012,11 @@ void BitInstruction(VirtZ80 *cpu) {
     case 0x35:
     case 0x37:
       cpu->regs[(opcode & 0x07)] = sll8(cpu, cpu->regs[(opcode & 0x07)]);
+      cpu->cycles += 8;
       break;
     case 0x36: // SLL (HL)
       mwrite8(HL(cpu), sll8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 15;
       break;
 
     case 0x38: // SRL reg
@@ -1770,9 +2027,11 @@ void BitInstruction(VirtZ80 *cpu) {
     case 0x3D:
     case 0x3F:
       cpu->regs[((opcode-8) & 0x07)] = srl8(cpu, cpu->regs[((opcode-8) & 0x07)]);
+      cpu->cycles += 8;
       break;
     case 0x3E: // SRL (HL)
       mwrite8(HL(cpu), srl8(cpu, mread8(HL(cpu))));
+      cpu->cycles += 15;
       break;
     default:
       break;
@@ -1783,8 +2042,10 @@ void BitInstruction(VirtZ80 *cpu) {
     
     if (reg == 0x06) { /* (HL)*/
       bit8(cpu, mread8(HL(cpu)), bit);
+      cpu->cycles += 12;
     } else {
       bit8(cpu, cpu->regs[reg], bit);
+      cpu->cycles += 8;
     }
   } else if (opcode >= 0x80 && opcode <= 0xBF) { /* RES*/
     uint8_t bit = (opcode >> 3) & 0x07;
@@ -1792,8 +2053,10 @@ void BitInstruction(VirtZ80 *cpu) {
     
     if (reg == 0x06) { /* (HL)*/
       mwrite8(HL(cpu),res8(cpu, mread8(HL(cpu)), bit));
+      cpu->cycles += 12;
     } else {
       cpu->regs[reg] = res8(cpu, cpu->regs[reg], bit);
+      cpu->cycles += 8;
     }
   } else if (opcode >= 0xC0 && opcode <= 0xFF) { /* SET*/
     uint8_t bit = (opcode >> 3) & 0x07;
@@ -1801,8 +2064,10 @@ void BitInstruction(VirtZ80 *cpu) {
     
     if (reg == 0x06) { /* (HL)*/
       mwrite8(HL(cpu),set8(cpu, mread8(HL(cpu)), bit));
+      cpu->cycles += 12;
     } else {
       cpu->regs[reg] = set8(cpu, cpu->regs[reg], bit);
+      cpu->cycles += 8;
     }
   }
 }
@@ -1818,10 +2083,12 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     case 0x04:
     case 0x05:
     case 0x07:
-      cpu->regs[(opcode & 0x07)] = rlc8(cpu, mread8(addr)); //rlc8(cpu, cpu->regs[(opcode & 0x07)]);
+      cpu->regs[(opcode & 0x07)] = rlc8(cpu, mread8(addr));
+      cpu->cycles += 23;
       break;
     case 0x06: // RLC (i+d)
       mwrite8(addr, rlc8(cpu, mread8(addr)));
+      cpu->cycles += 23;
       break;
 
     case 0x08: // RRC reg
@@ -1832,9 +2099,11 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     case 0x0D:
     case 0x0F:
       cpu->regs[((opcode-8) & 0x07)] = rrc8(cpu, mread8(addr));
+      cpu->cycles += 23;
       break;
     case 0x0E: // RRC (i+d)
       mwrite8(addr, rrc8(cpu, mread8(addr)));
+      cpu->cycles += 23;
       break;
     
     case 0x10: // RL reg
@@ -1845,9 +2114,11 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     case 0x15:
     case 0x17:
       cpu->regs[(opcode & 0x07)] = rl8(cpu, mread8(addr));
+      cpu->cycles += 23;
       break;
     case 0x16: // RL (i+d)
       mwrite8(addr, rl8(cpu, mread8(addr)));
+      cpu->cycles += 23;
       break;
 
     case 0x18: // RR reg
@@ -1858,9 +2129,11 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     case 0x1D:
     case 0x1F:
       cpu->regs[((opcode-8) & 0x07)] = rr8(cpu, mread8(addr));
+      cpu->cycles += 23;
       break;
     case 0x1E: // RR (i+d)
       mwrite8(addr, rr8(cpu, mread8(addr)));
+      cpu->cycles += 23;
       break;
 
     case 0x20: // SLA reg
@@ -1871,9 +2144,11 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     case 0x25:
     case 0x27:
       cpu->regs[(opcode & 0x07)] = sla8(cpu, mread8(addr));
+      cpu->cycles += 23;
       break;
     case 0x26: // SLA (i+d)
       mwrite8(addr, sla8(cpu, mread8(addr)));
+      cpu->cycles += 23;
       break;
 
     case 0x28: // SRA reg
@@ -1884,9 +2159,11 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     case 0x2D:
     case 0x2F:
       cpu->regs[((opcode-8) & 0x07)] = sra8(cpu, mread8(addr));
+      cpu->cycles += 23;
       break;
     case 0x2E: // SRA (i+d)
       mwrite8(addr, sra8(cpu, mread8(addr)));
+      cpu->cycles += 23;
       break;
 
     case 0x30: // SLL reg
@@ -1897,9 +2174,11 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     case 0x35:
     case 0x37:
       cpu->regs[(opcode & 0x07)] = sll8(cpu, mread8(addr));
+      cpu->cycles += 23;
       break;
     case 0x36: // SLL (i+d)
       mwrite8(addr, sll8(cpu, mread8(addr)));
+      cpu->cycles += 23;
       break;
 
     case 0x38: // SRL reg
@@ -1910,9 +2189,11 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     case 0x3D:
     case 0x3F:
       cpu->regs[((opcode-8) & 0x07)] = srl8(cpu, mread8(addr));
+      cpu->cycles += 23;
       break;
     case 0x3E: // SRL (i+d)
       mwrite8(addr, srl8(cpu, mread8(addr)));
+      cpu->cycles += 23;
       break;
     default:
       break;
@@ -1922,15 +2203,21 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
     
     bit8(cpu, mread8(addr), bit);
 
+    cpu->cycles += 20;
+
   } else if (opcode >= 0x80 && opcode <= 0xBF) { /* RES*/
     uint8_t bit = (opcode >> 3) & 0x07;
     
     mwrite8(addr,res8(cpu, mread8(addr), bit));
 
+    cpu->cycles += 23;
+
   } else if (opcode >= 0xC0 && opcode <= 0xFF) { /* SET*/
     uint8_t bit = (opcode >> 3) & 0x07;
 
     mwrite8(addr,set8(cpu, mread8(addr), bit));
+
+    cpu->cycles += 23;
 
   }
 }
@@ -1941,65 +2228,86 @@ void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do th
   switch (opcode) {
     case 0x09: // ADD IX/IY, BC
       *index_reg = add16(cpu, *index_reg, BC(cpu));
+      cpu->cycles += 15;
       break;
     case 0x19: // ADD IX/IY, DE
       *index_reg = add16(cpu, *index_reg, DE(cpu));
+      cpu->cycles += 15;
       break;
     case 0x21: // LD IX/IY, nn
       *index_reg = fWord(cpu);
+      cpu->cycles += 14;
       break;
     case 0x22: // LD (nn), IX/IY
       mwrite16(fWord(cpu), *index_reg);
+      cpu->cycles += 20;
       break;
     case 0x23: // INC IX/IY
       *index_reg += 1;
+      cpu->cycles += 10;
+      break;
+    case 0x29: // ADD IX/IY, IX/IY
+      *index_reg = add16(cpu, *index_reg, *index_reg);
+      cpu->cycles += 15;
       break;
     case 0x2A: // LD IX/IY, (nn)
       *index_reg = mread16(fWord(cpu));
+      cpu->cycles += 20;
       break;
     case 0x2B: // DEC IX/IY
       *index_reg -= 1;
+      cpu->cycles += 10;
       break;
     case 0x34: // INC (IX/IY+d)
       cpu->wz = *index_reg + (int8_t)fByte(cpu);
       mwrite8(cpu->wz, inc8(cpu, mread8(cpu->wz)));
+      cpu->cycles += 23;
       break;
     case 0x35: // DEC (IX/IY+d)
       cpu->wz = *index_reg + (int8_t)fByte(cpu);
       mwrite8(cpu->wz, dec8(cpu, mread8(cpu->wz)));
+      cpu->cycles += 23;
       break;
     case 0x39: // ADD IX/IY, SP
       *index_reg = add16(cpu, *index_reg, cpu->sp);
+      cpu->cycles += 15;
       break;
     case 0xCB: /* Index bit instructions */
       BitInstructionIndex(cpu, index_reg);
       break;
     case 0xE1: // POP IX/IY
       *index_reg = pop(cpu);
+      cpu->cycles += 14;
       break;
     case 0xE3: // EX (SP), IX/IY
       cpu->wz = *index_reg;
       *index_reg = mread16(cpu->sp);
       mwrite16(cpu->sp, cpu->wz);
+      cpu->cycles += 23;
       break;
     case 0xE5: // PUSH IX/IY
       push(cpu, *index_reg);
+      cpu->cycles += 15;
       break;
     case 0xE9: // JP (IX/IY)
       cpu->pc = *index_reg;
+      cpu->cycles += 8;
       break;
     case 0xF9: // LD SP, IX/IY
       cpu->sp = *index_reg;
+      cpu->cycles += 10;
       break;
     default:
       printf("Unknown index instruction: 0x%02x at 0x%04x\n", opcode, cpu->pc);
       return;
   }
 }
+
 void printState(VirtZ80 *cpu) {
   printf(
-    "AF=0x%04x BC=0x%04x DE=0x%04x HL=0x%04x IX=0x%04x IY=0x%04x SP=0x%04x PC=0x%04x\n",
-    AF(cpu), BC(cpu), DE(cpu), HL(cpu), cpu->ix, cpu->iy, cpu->sp, cpu->pc
+    "AF=0x%04x BC=0x%04x DE=0x%04x HL=0x%04x IX=0x%04x IY=0x%04x SP=0x%04x PC=0x%04x IFF1=0x%01x IFF2=0x%01x | cycles=0x%08x\n",
+    AF(cpu), BC(cpu), DE(cpu), HL(cpu), cpu->ix, cpu->iy, cpu->sp, cpu->pc,
+    cpu->iff1, cpu->iff2, cpu->cycles
   );
 }
 
@@ -2062,8 +2370,8 @@ int main(int argc, char **argv) {
   newt.c_lflag &= ~(ICANON | ECHO);         // Disable buffering and echo
   tcsetattr(STDIN_FILENO, TCSANOW, &newt);  // Apply new settings
 
-  VirtZ80 cpu;
   memset(&cpu, 0, sizeof(VirtZ80));
+
   fseek(source, 0, SEEK_END);
   long file_size = ftell(source);
   fseek(source, 0, SEEK_SET);

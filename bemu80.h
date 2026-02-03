@@ -82,6 +82,7 @@ typedef struct {
   uint8_t im; // Interrupt mode
   bool iff1, iff2;
   bool halt;
+  uint32_t cycles;
 } VirtZ80;
 
 void execute(VirtZ80 *cpu);
