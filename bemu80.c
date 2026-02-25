@@ -2,17 +2,25 @@
  * Copyright (c) 2025 Benjamin Helle
 */ 
 #include "bemu80.h"
+#include <bits/time.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include <termios.h>
 #include <pthread.h>
+#include <unistd.h>
 
 bool print_ins = false;
 bool input_thread_stop = false;
 
 VirtZ80 cpu;
+
+uint64_t cycles = 0;
+struct timespec start, current;
 
 uint8_t memory[MEM_SIZE]; /* global memory */
 
@@ -70,7 +78,7 @@ static inline uint16_t pop(VirtZ80 *cpu) {
   return result;
 }
 
-#define CHAR_BUF_SIZE 128 /* Increase will allow larger copy paste*/
+#define CHAR_BUF_SIZE 1024 /* Increase will allow larger copy paste*/
 
 typedef struct {
   char buf[CHAR_BUF_SIZE];
@@ -131,11 +139,16 @@ void* input_thread(void* arg) { /* Small simple input function */
 
 void execute(VirtZ80 *cpu) {
   while (!cpu->halt) {
-    //if (!stepping) usleep(500); // adjust delay
+    cycles += step_instruction(cpu);
     if (print_ins) printf("Instruction: 0x%02x at 0x%04x | ", memory[cpu->pc], cpu->pc);
     if (print_ins) printState(cpu);
-    MainInstruction(cpu);
-    cpu->r += 1;
+
+    if (cycles >= CYCLES_PER_MS) {
+      do clock_gettime(CLOCK_MONOTONIC, &current);
+      while ((current.tv_sec - start.tv_sec) * 1000000 + (current.tv_nsec - start.tv_nsec) / 1000 < CYCLES_US);
+      cycles = 0;
+      clock_gettime(CLOCK_MONOTONIC, &start);
+    }
   }
 }
 
@@ -607,9 +620,11 @@ static inline uint8_t set8(VirtZ80 *cpu, uint8_t a, uint8_t bit) {
   return (a | (1 << bit));
 }
 
-void MainInstruction(VirtZ80 *cpu) {
+int step_instruction(VirtZ80 *cpu) {
   uint8_t opcode = fByte(cpu);
   int8_t reladdr = 0;
+  uint64_t old_cycles = cpu->cycles; /* Hold previous cycles*/
+  cpu->r = (cpu->r + 1) & 0x7F; /* Increment the refresh register*/
   switch (opcode) {
     case 0x00: // NOP
       cpu->cycles += 4;
@@ -1228,7 +1243,7 @@ void MainInstruction(VirtZ80 *cpu) {
       cpu->cycles += 10;
       break;
     case 0xCB: // Bit instruction
-      BitInstruction(cpu);
+      bit_instruction(cpu);
       break;
     case 0xCC: // CALL Z, nn
       cpu->cycles += 10;
@@ -1332,7 +1347,7 @@ void MainInstruction(VirtZ80 *cpu) {
       }
       break;
     case 0xDD: // IX Prefix
-      IndexInstruction(cpu, &cpu->ix);
+      index_instruction(cpu, &cpu->ix);
       break;
     case 0xDE: // SBC A, n
       cpu->regs[REG_A] = sbc8(cpu, cpu->regs[REG_A], fByte(cpu));
@@ -1421,7 +1436,7 @@ void MainInstruction(VirtZ80 *cpu) {
       }
       break;
     case 0xED: // Misc. Instructions
-      MiscInstruction(cpu);
+      misc_instruction(cpu);
       break;
     case 0xEE: // XOR A, n
       cpu->regs[REG_A] = xor8(cpu, cpu->regs[REG_A], fByte(cpu));
@@ -1509,7 +1524,7 @@ void MainInstruction(VirtZ80 *cpu) {
       }
       break;
     case 0xFD: // IY Prefix
-      IndexInstruction(cpu, &cpu->iy);
+      index_instruction(cpu, &cpu->iy);
       break;
     case 0xFE: // CP A, n
       cp8(cpu, cpu->regs[REG_A], fByte(cpu));
@@ -1523,9 +1538,10 @@ void MainInstruction(VirtZ80 *cpu) {
     default:
       break;
   }
+  return cpu->cycles-old_cycles; /* Return the number of cycles used*/
 }
 
-void MiscInstruction(VirtZ80 *cpu) {
+void misc_instruction(VirtZ80 *cpu) {
   uint8_t opcode = fByte(cpu);
   uint8_t temp1 = 0;
   if (print_ins) printf("0xED Instruction: 0x%02x\n", opcode);
@@ -1911,7 +1927,7 @@ void MiscInstruction(VirtZ80 *cpu) {
 }
 
 
-void BitInstruction(VirtZ80 *cpu) {
+void bit_instruction(VirtZ80 *cpu) {
   uint8_t opcode = fByte(cpu);
   switch (opcode) {
     case 0x00: // RLC reg
@@ -2072,7 +2088,7 @@ void BitInstruction(VirtZ80 *cpu) {
   }
 }
 
-void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
+void bit_instruction_index(VirtZ80 *cpu, uint16_t* index_reg) {
   uint16_t addr = get_index_addr(cpu, *index_reg);
   uint8_t opcode = fByte(cpu);
   switch (opcode) {
@@ -2223,7 +2239,7 @@ void BitInstructionIndex(VirtZ80 *cpu, uint16_t* index_reg) {
 }
 
 
-void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do this
+void index_instruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do this
   uint8_t opcode = fByte(cpu);
   switch (opcode) {
     case 0x09: // ADD IX/IY, BC
@@ -2273,7 +2289,7 @@ void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do th
       cpu->cycles += 15;
       break;
     case 0xCB: /* Index bit instructions */
-      BitInstructionIndex(cpu, index_reg);
+      bit_instruction_index(cpu, index_reg);
       break;
     case 0xE1: // POP IX/IY
       *index_reg = pop(cpu);
@@ -2305,7 +2321,7 @@ void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do th
 
 void printState(VirtZ80 *cpu) {
   printf(
-    "AF=0x%04x BC=0x%04x DE=0x%04x HL=0x%04x IX=0x%04x IY=0x%04x SP=0x%04x PC=0x%04x IFF1=0x%01x IFF2=0x%01x | cycles=0x%08x\n",
+    "AF=0x%04x BC=0x%04x DE=0x%04x HL=0x%04x IX=0x%04x IY=0x%04x SP=0x%04x PC=0x%04x IFF1=0x%01x IFF2=0x%01x | cycles=0x%016lx\n",
     AF(cpu), BC(cpu), DE(cpu), HL(cpu), cpu->ix, cpu->iy, cpu->sp, cpu->pc,
     cpu->iff1, cpu->iff2, cpu->cycles
   );
@@ -2362,6 +2378,8 @@ int main(int argc, char **argv) {
     perror("fopen");
     exit(1);
   }
+
+  clock_gettime(CLOCK_MONOTONIC, &start); /* Initialize the clock*/
 
   struct termios oldt, newt;
 

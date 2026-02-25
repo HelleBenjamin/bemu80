@@ -4,13 +4,8 @@
 #ifndef BEMU80_H
 #define BEMU80_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #define MEM_SIZE 0x10000 // 64k
 #define STD_PORT 0x81
@@ -69,6 +64,11 @@
 #define REGPAIR_HL 0x02
 #define REGPAIR_SP 0x03
 
+/* Target clockspeed */
+#define TARGET_CLOCK 4000000 /* 4MHz */
+#define CYCLES_US 1000 /* 1ms */
+#define CYCLES_PER_MS (TARGET_CLOCK / CYCLES_US)
+
 
 typedef struct {
   // Registers
@@ -82,7 +82,7 @@ typedef struct {
   uint8_t im; // Interrupt mode
   bool iff1, iff2;
   bool halt;
-  uint32_t cycles;
+  uint64_t cycles;
 } VirtZ80;
 
 void execute(VirtZ80 *cpu);
@@ -101,10 +101,10 @@ uint8_t InputHandler(uint8_t port);
 void printState(VirtZ80 *cpu);
 void stackTrace(VirtZ80 *cpu, int depth);
 
-void MainInstruction(VirtZ80 *cpu);
-void MiscInstruction(VirtZ80 *cpu);
-void BitInstruction(VirtZ80 *cpu);
-void IndexInstruction(VirtZ80 *cpu, uint16_t* index_reg);
+int step_instruction(VirtZ80 *cpu);
+void misc_instruction(VirtZ80 *cpu);
+void bit_instruction(VirtZ80 *cpu);
+void index_instruction(VirtZ80 *cpu, uint16_t* index_reg);
 
 /*DEBUG STUFF*/
 void draw_registers(VirtZ80 *cpu);
