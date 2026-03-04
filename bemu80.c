@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright (c) 2025 Benjamin Helle
+ * Copyright (c) 2025-2026 Benjamin Helle
 */ 
 #include "bemu80.h"
 #include <bits/time.h>
@@ -16,6 +16,10 @@
 
 bool print_ins = false;
 bool input_thread_stop = false;
+
+uint16_t rom_size = 0x2000; /* 8k ROM, starts at 0x0000*/
+uint16_t ram_size = 0xE000; /* 56k RAM, starts at the end of ROM*/
+
 
 VirtZ80 cpu;
 
@@ -37,7 +41,7 @@ static inline void set_hl(VirtZ80 *cpu, uint16_t value) { cpu->regs[REG_H] = (va
 static inline uint16_t get_index_addr(VirtZ80* cpu, uint16_t base) { return base + (int8_t)fByte(cpu); }
 
 static inline void mwrite8(uint16_t address, uint8_t value) { 
-  if (address >= MEM_SIZE) return; /* TODO: error handling */
+  if (address >= MEM_SIZE || address <= rom_size) return; /* TODO: error handling */
   memory[address] = value;
 }
 
@@ -47,7 +51,7 @@ static inline uint8_t mread8(uint16_t address) {
 }
 
 static inline void mwrite16(uint16_t address, uint16_t value) {
-  if (address+1 >= MEM_SIZE) return;
+  if (address+1 >= MEM_SIZE || address <= rom_size) return;
   memory[address] = value & 0xFF;
   memory[address + 1] = (value >> 8) & 0xFF;
 }
@@ -82,10 +86,10 @@ static inline uint16_t pop(VirtZ80 *cpu) {
 
 typedef struct {
   char buf[CHAR_BUF_SIZE];
-  uint8_t head;
-  uint8_t tail;
-  uint8_t count;
-  pthread_mutex_t lock; /* Prevent race conditions*/
+  uint16_t head;
+  uint16_t tail;
+  uint16_t count;
+  pthread_mutex_t lock; /* Prevent race any conditions*/
 } character_buffer;
 
 static character_buffer char_buf = {
@@ -2355,59 +2359,55 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-
-  uint16_t program_start = 0x0000;
   uint16_t start_pc = 0x0000;
 
   bool printmem = false;
+  FILE* rom = NULL;
 
-  for (int i = 2; i < argc; i++) {
-    if (strcmp(argv[i], "-ins") == 0) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--debug") == 0) {
       print_ins = true;
-    } else if (strcmp(argv[i], "-pc") == 0) {
+    } else if (strcmp(argv[i], "--pc") == 0) {
       start_pc = strtol(argv[i+1], NULL, 16);
-    } else if (strcmp(argv[i], "-org") == 0) {
-      program_start = strtol(argv[i+1], NULL, 16);
-    } else if (strcmp(argv[i], "-mem") == 0) {
-      printmem = true;
+    } else if (strcmp(argv[i], "--romsize") == 0) {
+      rom_size = strtol(argv[i+1], NULL, 16);
+    } else if (strcmp(argv[i], "--ramsize") == 0) {
+      ram_size = strtol(argv[i+1], NULL, 16);
+    } else if (strcmp(argv[i], "--rom") == 0) {
+      rom = fopen(argv[i+1], "rb");
+      if (rom == NULL) {
+        perror("fopen");
+        exit(1);
+      }
     }
-  }
-
-  FILE *source = fopen(argv[1], "rb");
-  if (source == NULL) {
-    perror("fopen");
-    exit(1);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &start); /* Initialize the clock*/
 
-  struct termios oldt, newt;
+  struct termios oldt, newt; /* Terminal settings*/
 
-  tcgetattr(STDIN_FILENO, &oldt); // Save old settings
+  tcgetattr(STDIN_FILENO, &oldt); /* Save old settings */
   newt = oldt;
-  newt.c_lflag &= ~(ICANON | ECHO);         // Disable buffering and echo
-  tcsetattr(STDIN_FILENO, TCSANOW, &newt);  // Apply new settings
+  newt.c_lflag &= ~(ICANON | ECHO); /* Disable buffering and echo*/
+  tcsetattr(STDIN_FILENO, TCSANOW, &newt);  /* Apply the new settings*/
 
-  memset(&cpu, 0, sizeof(VirtZ80));
+  memset(&cpu, 0, sizeof(VirtZ80)); /* Initialize the CPU to 0*/
 
-  fseek(source, 0, SEEK_END);
-  long file_size = ftell(source);
-  fseek(source, 0, SEEK_SET);
+  fseek(rom, 0, SEEK_END); /* Get file size */
+  long file_size = ftell(rom);
+  fseek(rom, 0, SEEK_SET);
 
-  char *src_hex = (char *)malloc(sizeof(char) * file_size);
+  char *src_hex = (char *)malloc(sizeof(char) * file_size); /* Alloc temp buffer where to read the rom*/
 
   int i = 0;
-  while (fread(&src_hex[i], 1, 1, source)) {
+  while (fread(&src_hex[i], 1, 1, rom)) { /* Copy it*/
     i++;
   }
 
-  fclose(source);
+  fclose(rom);
 
   memset(memory, 0, MEM_SIZE);
-
-  for (int j = 0; j < file_size; j++) {
-    memory[j+program_start] = src_hex[j];
-  }
+  memcpy(memory, src_hex, file_size); /* Copy it to the cpu's memory */
 
   free(src_hex);
 

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright (c) 2025 Benjamin Helle
+ * Copyright (c) 2025-2026 Benjamin Helle
 */ 
 #ifndef BEMU80_H
 #define BEMU80_H
@@ -109,6 +109,7 @@ void index_instruction(VirtZ80 *cpu, uint16_t* index_reg);
 /*DEBUG STUFF*/
 void draw_registers(VirtZ80 *cpu);
 void draw_memory(VirtZ80 *cpu);
-
+void init_debug_ui();
+void close_debug_ui();
 
 #endif

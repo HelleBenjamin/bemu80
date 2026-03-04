@@ -34,13 +34,15 @@ Options
 =======
 
 The binary program to be executed is specified as the first argument.
-Example: `bemu80 test.bin -ins` not `bemu80 -ins test.bin`.
+Example: `bemu80 --rom test.bin`.
 The emulator accepts the following arguments:
 
-- `-ins`: Print CPU state after each instruction. Useful for debugging.
-- `-mem`: Do a memory dump after loading the program.
-- `-pc`: Set the initial program counter.
-- `-org`: Set the address where the program is loaded.
+- `--rom <file>`: Load a ROM file.
+- `--romsize <size>`: Set the size of the ROM. Default is 8k (0x2000).
+- `--ramsize <size>`: Set the size of the RAM. Default is 56k (0xE000).
+- `--debug`: Enable debug mode.
+- `--pc <address>`: Set the initial program counter.
+
 
 Contributing
 ============
