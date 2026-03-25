@@ -19,8 +19,10 @@ bool input_thread_stop = false;
 
 uint16_t rom_size = 0x2000; /* 8k ROM, starts at 0x0000*/
 uint16_t ram_size = 0xE000; /* 56k RAM, starts at the end of ROM*/
+uint16_t breakpoint = 0x0000;
+bool enable_breakpoint = false;
 
-
+FDC_t fdc;
 VirtZ80 cpu;
 
 uint64_t cycles = 0;
@@ -143,6 +145,27 @@ void* input_thread(void* arg) { /* Small simple input function */
 
 void execute(VirtZ80 *cpu) {
   while (!cpu->halt) {
+    if (cpu->pc == breakpoint && enable_breakpoint) {
+      cpu->halt = true;
+      while (1) { /* Dummy debug function, for now*/
+        printf("> ");
+        fflush(stdout);
+        char input = 0;
+        while (input == 0) input = pop_char();
+        if (input == 'c') {
+          cpu->halt = false;
+          break;
+        } else if (input == 'q') {
+          exit(0);
+        } else if (input == 'm') {
+          printMemory(cpu);
+        } else if (input == 's') {
+          stackTrace(cpu, 10);
+        } else if (input == 'p') {
+          printState(cpu);
+        }
+      }
+    }
     cycles += step_instruction(cpu);
     if (print_ins) printf("Instruction: 0x%02x at 0x%04x | ", memory[cpu->pc], cpu->pc);
     if (print_ins) printState(cpu);
@@ -194,17 +217,114 @@ static inline void setFlag(VirtZ80 *cpu, uint8_t flag, uint8_t value) {
   else cpu->flags &= ~flag;
 }
 
+void fdc_init(char* path) {
+  memset(&fdc, 0, sizeof(fdc)); /* Zero all*/
+  fdc.disk = fopen(path, "r+b");
+  if (!fdc.disk) {
+    printf("Could not open disk image\n");
+    exit(1);
+  }
+  fdc.status = FDC_STATUS_OK; /* OK :)*/
+}
+
+void fdc_close() {
+  fclose(fdc.disk);
+  fdc.disk = NULL;
+  fdc.status = FDC_STATUS_OK;
+}
+
+void fdc_cmd(uint8_t cmd) {
+  if (!fdc.disk) { /* The disk must be initialized first*/
+    fdc.status = FDC_STATUS_ERR;
+    return;
+  }
+  /*printf("Executing command 0x%02x\n", cmd);*/
+
+  fdc.status = FDC_STATUS_BUSY; /* Signal other threads*/
+
+  uint16_t cur_lba = fdc.lba; 
+  uint16_t cur_dma = fdc.dma;
+
+  for (int c = 0; c < fdc.count; c++) {
+    uint32_t offset = cur_lba * FDC_SECTOR_SIZE;
+
+   /*printf("DMA: 0x%04x, LBA: 0x%04x, OFFSET: 0x%08x\n", cur_dma, cur_lba, offset);*/
+
+    if (fseek(fdc.disk, offset, SEEK_SET) != 0) {
+      fdc.status = FDC_STATUS_ERR;
+      return;
+    }
+
+    if (cmd == FDC_CMD_READ) { /* Read to memory*/
+      for (int i = 0; i < FDC_SECTOR_SIZE; i++) {
+        int data = fgetc(fdc.disk);
+        if (data == EOF) break; /* End of file*/
+        mwrite8(cur_dma+i, (data & 0xFF));
+      }
+    }
+    if (cmd == FDC_CMD_WRITE) { /* Write from memory*/
+      for (int i = 0; i < FDC_SECTOR_SIZE; i++) {
+        if (fputc(mread8(cur_dma+i), fdc.disk) == EOF) break;
+      }
+      fflush(fdc.disk);
+    }
+
+    cur_dma += FDC_SECTOR_SIZE; /* Next 512 byte block in memory*/
+    cur_lba++;
+
+  }
+  fdc.status = FDC_STATUS_OK;
+}
+
 void OutputHandler(uint8_t port, uint8_t value) {
-  if (port == STD_PORT) { 
-    printf("%c", value);
-    fflush(stdout); // need to flush to work without '\n' newline. 
-  } // STDOUT
+  switch (port) {
+    /* Floppy */
+    case FDC_PORT_CMD:
+      fdc_cmd(value);
+      break;
+    case FDC_PORT_LBA_LO:
+      fdc.lba = (fdc.lba & 0xFF00) | value;
+      break;
+    case FDC_PORT_LBA_HI:
+      fdc.lba = (fdc.lba & 0x00FF) | (value << 8);
+      break;
+    case FDC_PORT_DMA_LO:
+      fdc.dma = (fdc.dma & 0xFF00) | value;
+      break;
+    case FDC_PORT_DMA_HI:
+      fdc.dma = (fdc.dma & 0x00FF) | (value << 8);
+      break;
+    case FDC_PORT_COUNT:
+      fdc.count = value ? value : 1; /* If 0, set to 1 to prevent some bugs*/
+      break;
+
+    /* STDIO*/
+    case STD_PORT:
+      printf("%c", value); /* or putchar, compiler will optimize it*/
+      fflush(stdout); /* need to flush to work without '\n' newline. */
+      break;
+    default:
+      break; /* No valid port*/
+  }
 }
 
 uint8_t InputHandler(uint8_t port) {
   char input = 0;
-  if (port == STD_PORT) input = pop_char(); // STDIN
-  if (port == 0x80) input = char_buf.count; /* What to do with this?*/
+  switch (port) {
+    /* STDIO */
+    case STD_PORT:
+      input = pop_char();
+      break;
+    case 0x80:
+      input = char_buf.count; /* Return buffer count, useful for checking if there is input*/
+      break;
+    case FDC_PORT_STATUS:
+      input = fdc.status;
+      break;
+    default:
+      break;
+  }
+
   return input;
 }
 
@@ -2349,6 +2469,10 @@ void printMemory(VirtZ80 *cpu) {
     for (int j = 0; j < 16; j++) {
       printf("%02x ", memory[i + j]);
     }
+    printf("\t");
+    for (int j = 0; j < 16; j++) {
+      if (memory[i + j] >= 32 && memory[i + j] <= 126) printf("%c ", memory[i + j]);
+    }
     printf("\n");
   }
 }
@@ -2379,7 +2503,22 @@ int main(int argc, char **argv) {
         perror("fopen");
         exit(1);
       }
+    } else if (strcmp(argv[i], "--bp") == 0) {
+      breakpoint = strtol(argv[i+1], NULL, 16);
+      enable_breakpoint = true;
+    } else if (strcmp(argv[i], "--fd") == 0) {
+      fdc_init(argv[i+1]);
     }
+
+  }
+
+  /* Safety checks, prevents segfaults and such*/
+  if (rom == NULL) {
+    perror("No ROM specified");
+    exit(1);
+  }
+  if (fdc.disk == NULL) {
+    printf("No floppy disk specified\n");
   }
 
   clock_gettime(CLOCK_MONOTONIC, &start); /* Initialize the clock*/

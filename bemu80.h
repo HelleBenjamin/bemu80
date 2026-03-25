@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 #define MEM_SIZE 0x10000 // 64k
 #define STD_PORT 0x81
@@ -69,6 +70,26 @@
 #define CYCLES_US 1000 /* 1ms */
 #define CYCLES_PER_MS (TARGET_CLOCK / CYCLES_US)
 
+/* FDC */
+/* This is a very simple implementation of a floppy disk controller*/
+#define FDC_PORT_CMD     0x10
+#define FDC_PORT_LBA_LO  0x11
+#define FDC_PORT_LBA_HI  0x12
+#define FDC_PORT_DMA_LO  0x13
+#define FDC_PORT_DMA_HI  0x14
+#define FDC_PORT_STATUS  0x15
+#define FDC_PORT_COUNT   0x16
+
+#define FDC_CMD_READ     0x01
+#define FDC_CMD_WRITE    0x02
+
+#define FDC_STATUS_OK    0x00
+#define FDC_STATUS_ERR   0x01
+#define FDC_STATUS_BUSY  0x02
+
+#define FDC_SECTOR_SIZE  512
+#define FDC_SECTORS_PER_TRACK 9
+
 
 typedef struct {
   // Registers
@@ -85,6 +106,12 @@ typedef struct {
   uint64_t cycles;
 } VirtZ80;
 
+typedef struct {
+  uint8_t status, count;
+  uint16_t lba, dma;
+  FILE* disk;
+} FDC_t;
+
 void execute(VirtZ80 *cpu);
 
 static inline void mwrite8(uint16_t address, uint8_t value);
@@ -100,6 +127,7 @@ uint8_t InputHandler(uint8_t port);
 
 void printState(VirtZ80 *cpu);
 void stackTrace(VirtZ80 *cpu, int depth);
+void printMemory(VirtZ80 *cpu);
 
 int step_instruction(VirtZ80 *cpu);
 void misc_instruction(VirtZ80 *cpu);

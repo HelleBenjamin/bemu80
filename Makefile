@@ -35,3 +35,6 @@ example_folder := examples
 
 example_io:
 	$(ASM) $(ASMFLAGS) $(example_folder)/io.asm
+
+example_disk:
+	$(ASM) $(ASMFLAGS) $(example_folder)/disk.asm

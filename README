@@ -42,6 +42,8 @@ The emulator accepts the following arguments:
 - `--ramsize <size>`: Set the size of the RAM. Default is 56k (0xE000).
 - `--debug`: Enable debug mode.
 - `--pc <address>`: Set the initial program counter.
+- `--bp <address>`: Set a breakpoint at the specified address.
+- `--fd <file>`: Set the floppy disk file.
 
 
 Contributing
