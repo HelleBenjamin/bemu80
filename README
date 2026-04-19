@@ -44,6 +44,7 @@ The emulator accepts the following arguments:
 - `--pc <address>`: Set the initial program counter.
 - `--bp <address>`: Set a breakpoint at the specified address.
 - `--fd <file>`: Set the floppy disk file.
+- `--speed <speed>`: Set the target emulation speed in Hz.
 
 
 Contributing

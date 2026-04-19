@@ -26,7 +26,9 @@ FDC_t fdc;
 VirtZ80 cpu;
 
 uint64_t cycles = 0;
-struct timespec start, current;
+struct timespec cycles_time;
+int target_speed = 4000000; /* default to 4 MHz*/
+long frame_ns;
 
 uint8_t memory[MEM_SIZE]; /* global memory */
 
@@ -170,12 +172,14 @@ void execute(VirtZ80 *cpu) {
     if (print_ins) printf("Instruction: 0x%02x at 0x%04x | ", memory[cpu->pc], cpu->pc);
     if (print_ins) printState(cpu);
 
-    if (cycles >= CYCLES_PER_MS) {
-      do clock_gettime(CLOCK_MONOTONIC, &current);
-      while ((current.tv_sec - start.tv_sec) * 1000000 + (current.tv_nsec - start.tv_nsec) / 1000 < CYCLES_US);
-      cycles = 0;
-      clock_gettime(CLOCK_MONOTONIC, &start);
+    cycles_time.tv_nsec += frame_ns;
+    if (cycles_time.tv_nsec >= 1000000000L) {
+      cycles_time.tv_nsec -= 1000000000L;
+      cycles_time.tv_sec++;
     }
+
+    /* sleep for the next frame*/
+    clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &cycles_time, NULL);
   }
 }
 
@@ -2508,6 +2512,8 @@ int main(int argc, char **argv) {
       enable_breakpoint = true;
     } else if (strcmp(argv[i], "--fd") == 0) {
       fdc_init(argv[i+1]);
+    } else if (strcmp(argv[i], "--speed") == 0) { /* set target clockspeed*/
+      target_speed = strtol(argv[i+1], NULL, 10);
     }
 
   }
@@ -2521,7 +2527,8 @@ int main(int argc, char **argv) {
     printf("No floppy disk specified\n");
   }
 
-  clock_gettime(CLOCK_MONOTONIC, &start); /* Initialize the clock*/
+  frame_ns = 1000000000L / target_speed;
+  clock_gettime(CLOCK_MONOTONIC, &cycles_time); /* Initialize the clock*/
 
   struct termios oldt, newt; /* Terminal settings*/
 

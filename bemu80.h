@@ -65,11 +65,6 @@
 #define REGPAIR_HL 0x02
 #define REGPAIR_SP 0x03
 
-/* Target clockspeed */
-#define TARGET_CLOCK 4000000 /* 4MHz */
-#define CYCLES_US 1000 /* 1ms */
-#define CYCLES_PER_MS (TARGET_CLOCK / CYCLES_US)
-
 /* FDC */
 /* This is a very simple implementation of a floppy disk controller*/
 #define FDC_PORT_CMD     0x10
