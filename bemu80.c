@@ -2412,6 +2412,11 @@ void index_instruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do t
       mwrite8(cpu->wz, dec8(cpu, mread8(cpu->wz)));
       cpu->cycles += 23;
       break;
+    case 0x36: // LD (IX/IY+d), n
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      mwrite8(cpu->wz, fByte(cpu));
+      cpu->cycles += 19;
+      break;
     case 0x39: // ADD IX/IY, SP
       *index_reg = add16(cpu, *index_reg, cpu->sp);
       cpu->cycles += 15;
