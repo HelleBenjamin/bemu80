@@ -2416,6 +2416,116 @@ void index_instruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do t
       *index_reg = add16(cpu, *index_reg, cpu->sp);
       cpu->cycles += 15;
       break;
+    case 0x46: /* LD B, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_B] = mread8(cpu->wz);
+      cpu->cycles += 19;
+      break;
+    case 0x4E: /* LD C, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_C] = mread8(cpu->wz);
+      cpu->cycles += 19;
+      break;
+    case 0x56: /* LD D, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_D] = mread8(cpu->wz);
+      cpu->cycles += 19;
+      break;
+    case 0x5E: /* LD E, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_E] = mread8(cpu->wz);
+      cpu->cycles += 19;
+      break;
+    case 0x66: /* LD H, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_H] = mread8(cpu->wz);
+      cpu->cycles += 19;
+      break;
+    case 0x6E: /* LD L, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_L] = mread8(cpu->wz);
+      cpu->cycles += 19;
+      break;
+    case 0x70: /* LD (IX/IY+d), B*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      mwrite8(cpu->wz, cpu->regs[REG_B]);
+      cpu->cycles += 19;
+      break;
+    case 0x71: /* LD (IX/IY+d), C*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      mwrite8(cpu->wz, cpu->regs[REG_C]);
+      cpu->cycles += 19;
+      break;
+    case 0x72: /* LD (IX/IY+d), D*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      mwrite8(cpu->wz, cpu->regs[REG_D]);
+      cpu->cycles += 19;
+      break;
+    case 0x73: /* LD (IX/IY+d), E*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      mwrite8(cpu->wz, cpu->regs[REG_E]);
+      cpu->cycles += 19;
+      break;
+    case 0x74: /* LD (IX/IY+d), H*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      mwrite8(cpu->wz, cpu->regs[REG_H]);
+      cpu->cycles += 19;
+      break;
+    case 0x75: /* LD (IX/IY+d), L*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      mwrite8(cpu->wz, cpu->regs[REG_L]);
+      cpu->cycles += 19;
+      break;
+    case 0x77: /* LD (IX/IY+d), A*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      mwrite8(cpu->wz, cpu->regs[REG_A]);
+      cpu->cycles += 19;
+      break;
+    case 0x7E: /* LD A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_A] = mread8(cpu->wz);
+      cpu->cycles += 19;
+      break;
+    case 0x86: /* ADD A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_A] = add8(cpu, cpu->regs[REG_A], mread8(cpu->wz));
+      cpu->cycles += 19;
+      break;
+    case 0x8E: /* ADC A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_A] = adc8(cpu, cpu->regs[REG_A], mread8(cpu->wz));
+      cpu->cycles += 19;
+      break;
+    case 0x96: /* SUB A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_A] = sub8(cpu, cpu->regs[REG_A], mread8(cpu->wz));
+      cpu->cycles += 19;
+      break;
+    case 0x9E: /* SBC A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_A] = sbc8(cpu, cpu->regs[REG_A], mread8(cpu->wz));
+      cpu->cycles += 19;
+      break;
+    case 0xA6: /* AND A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_A] = and8(cpu, cpu->regs[REG_A], mread8(cpu->wz));
+      cpu->cycles += 19;
+      break;
+    case 0xAE: /* XOR A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_A] = xor8(cpu, cpu->regs[REG_A], mread8(cpu->wz));
+      cpu->cycles += 19;
+      break;
+    case 0xB6: /* OR A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cpu->regs[REG_A] = or8(cpu, cpu->regs[REG_A], mread8(cpu->wz));
+      cpu->cycles += 19;
+      break;
+    case 0xBE: /* CP A, (IX/IY+d)*/
+      cpu->wz = *index_reg + (int8_t)fByte(cpu);
+      cp8(cpu, cpu->regs[REG_A], mread8(cpu->wz));
+      cpu->cycles += 19;
+      break;
     case 0xCB: /* Index bit instructions */
       bit_instruction_index(cpu, index_reg);
       break;
