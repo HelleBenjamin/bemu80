@@ -158,7 +158,7 @@ void execute(VirtZ80 *cpu) {
           cpu->halt = false;
           break;
         } else if (input == 'q') {
-          exit(0);
+          return;
         } else if (input == 'm') {
           printMemory(cpu);
         } else if (input == 's') {
@@ -2598,8 +2598,8 @@ void printMemory(VirtZ80 *cpu) {
 
 int main(int argc, char **argv) {
   if (argc < 2) {
-    perror("Usage: ./bemu80 <program>\n");
-    exit(1);
+    printf("Usage: ./bemu80 <program>\n");
+    return 1;
   }
 
   uint16_t start_pc = 0x0000;
@@ -2635,8 +2635,8 @@ int main(int argc, char **argv) {
 
   /* Safety checks, prevents segfaults and such*/
   if (rom == NULL) {
-    perror("No ROM specified");
-    exit(1);
+    printf("No ROM specified");
+    return 1;
   }
   if (fdc.disk == NULL) {
     printf("No floppy disk specified\n");
@@ -2660,10 +2660,7 @@ int main(int argc, char **argv) {
 
   char *src_hex = (char *)malloc(sizeof(char) * file_size); /* Alloc temp buffer where to read the rom*/
 
-  int i = 0;
-  while (fread(&src_hex[i], 1, 1, rom)) { /* Copy it*/
-    i++;
-  }
+  int bytes_read = fread(src_hex, 1, file_size, rom); /* Copy to rom */
 
   fclose(rom);
 
@@ -2672,7 +2669,7 @@ int main(int argc, char **argv) {
 
   free(src_hex);
 
-  printf("Loaded %d bytes\n", i);
+  printf("Loaded %d bytes\n", bytes_read);
 
   if (printmem) printMemory(&cpu);
 
@@ -2684,6 +2681,10 @@ int main(int argc, char **argv) {
   execute(&cpu);
   printf("CPU State: ");
   printState(&cpu);
+
+  if (fdc.disk != NULL) {
+    fdc_close();
+  }
   
   input_thread_stop = true;
   pthread_cancel(input_thread_thread); /* Use pthread_kill(input_thread_thread, 0) if not working*/
