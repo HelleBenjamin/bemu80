@@ -2,13 +2,13 @@ BEMU80
 ======
 
 Bemu80 is a Z80 emulator written in C for POSIX-compliant systems. It's currently mostly functional, 
-but expect to find bugs and missing features. If you find any bugs, please report them.
+but expect to find bugs and missing features. If you find any bugs, please report them. 
+The emulator supports all the documented instructions + a few undocumented ones.
 
-There are currently two branches: main and development. The main branch is stable and the development branch is unstable(and possibly buggy). You should use the main branch unless you're a developer and want to test new features.
+The main branch is the most up to date and therefore is recommended to use..
 
 See https://github.com/HelleBenjamin/bemu80-basic to get modified BASIC 4.7 for the emulator.
-
-This repository contains the source code of modified BASIC 4.7 for the Bemu80 emulator. See `basic/README` for more information.
+The repository contains the source code of modified BASIC 4.7 for the Bemu80 emulator.
 
 Building
 ========
@@ -18,7 +18,7 @@ What you need:
 - a compiler, such as gcc
 - make
 - POSIX-compliant OS, like linux, macos and freebsd
-- basic coding knowledge
+- basic coding knowledge(if customizing it)
 
 Build instructions:
 
