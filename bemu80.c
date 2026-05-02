@@ -2,6 +2,7 @@
  * Copyright (c) 2025-2026 Benjamin Helle
 */ 
 #include "bemu80.h"
+#include <bits/pthreadtypes.h>
 #include <bits/time.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -13,18 +14,28 @@
 #include <termios.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <stdatomic.h>
 
+/* global flags */
 bool print_ins = false;
-bool input_thread_stop = false;
+volatile bool input_thread_stop = false;
+_Atomic bool interrupt_pending = false;
+bool old_format = true; /* eg. \n -> \r*/
 
 uint16_t rom_size = 0x2000; /* 8k ROM, starts at 0x0000*/
+uint16_t rom_base = 0x0000; /* Where the ROM is loaded*/
 uint16_t ram_size = 0xE000; /* 56k RAM, starts at the end of ROM*/
 uint16_t breakpoint = 0x0000;
 bool enable_breakpoint = false;
 
+/* global "hardware" variables */
 FDC_t fdc;
 VirtZ80 cpu;
+ACIA_t acia;
+/* should always use mutexes when sharing variables across threads*/
+pthread_mutex_t acia_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* clock related */
 uint64_t cycles = 0;
 struct timespec cycles_time;
 int target_speed = 4000000; /* default to 4 MHz*/
@@ -86,59 +97,20 @@ static inline uint16_t pop(VirtZ80 *cpu) {
   return result;
 }
 
-#define CHAR_BUF_SIZE 1024 /* Increase will allow larger copy paste*/
-
-typedef struct {
-  char buf[CHAR_BUF_SIZE];
-  uint16_t head;
-  uint16_t tail;
-  uint16_t count;
-  pthread_mutex_t lock; /* Prevent race any conditions*/
-} character_buffer;
-
-static character_buffer char_buf = {
-  .head = 0,
-  .tail = 0,
-  .count = 0,
-  .lock = PTHREAD_MUTEX_INITIALIZER
-};
-
-/* Very pretty functions :)*/
-static inline void push_char(char c) {
-  pthread_mutex_lock(&char_buf.lock);
-  if (char_buf.count >= CHAR_BUF_SIZE) {
-    pthread_mutex_unlock(&char_buf.lock);
-    return;
-  }
-
-  char_buf.buf[char_buf.head] = c;
-  char_buf.head = (char_buf.head + 1) % CHAR_BUF_SIZE;
-  char_buf.count++;
-
-  pthread_mutex_unlock(&char_buf.lock);
-}
-
-static inline char pop_char() {
-  pthread_mutex_lock(&char_buf.lock);
-  if (char_buf.count == 0) {
-    pthread_mutex_unlock(&char_buf.lock);
-    return 0;
-  }
-  char c = char_buf.buf[char_buf.tail];
-
-  char_buf.tail = (char_buf.tail + 1) % CHAR_BUF_SIZE;
-  char_buf.count--;
-
-  pthread_mutex_unlock(&char_buf.lock);
-  return c;
-}
-
 void* input_thread(void* arg) { /* Small simple input function */
   int ch;
   while (!input_thread_stop) {
     ch = getchar(); 
     if (ch != EOF) {
-      push_char(ch);
+      if (old_format) { /* old format conversion*/
+        if (ch == '\n') ch = '\r';
+      }
+      pthread_mutex_lock(&acia_mutex);
+      if (acia.status & ACIA_RDRF) acia.status |= ACIA_OVRN; /* if there's already data, set overrun flag*/
+      acia.receive = (char)ch; /* put the char in the receive buffer*/
+      acia.status |= ACIA_RDRF; /* set data available flag*/
+      if (acia.ctrl & ACIA_RIE) interrupt_pending = true; /* if interrupt enabled, fire interrupt*/
+      pthread_mutex_unlock(&acia_mutex);
     }
   }
 
@@ -153,25 +125,32 @@ void execute(VirtZ80 *cpu) {
         printf("> ");
         fflush(stdout);
         char input = 0;
-        while (input == 0) input = pop_char();
+        while (input == 0) input = getchar(); /*TODO FIX*/
         if (input == 'c') {
           cpu->halt = false;
           break;
         } else if (input == 'q') {
           return;
         } else if (input == 'm') {
-          printMemory(cpu);
+          print_memory(cpu);
         } else if (input == 's') {
-          stackTrace(cpu, 10);
+          stack_trace(cpu, 10);
         } else if (input == 'p') {
-          printState(cpu);
+          print_state(cpu);
         }
       }
     }
+
+    if (interrupt_pending) { /* handle pending interrupts*/
+      interrupt(cpu);
+      interrupt_pending = false;
+    }
+
     cycles += step_instruction(cpu);
     if (print_ins) printf("Instruction: 0x%02x at 0x%04x | ", memory[cpu->pc], cpu->pc);
-    if (print_ins) printState(cpu);
+    if (print_ins) print_state(cpu);
 
+    /* calculate delay */
     cycles_time.tv_nsec += frame_ns;
     if (cycles_time.tv_nsec >= 1000000000L) {
       cycles_time.tv_nsec -= 1000000000L;
@@ -183,7 +162,25 @@ void execute(VirtZ80 *cpu) {
   }
 }
 
+void interrupt(VirtZ80 *cpu) {
+  if (cpu->iff1) { /* if maskable interrupts are enabled*/
+    switch (cpu->im) {
+      case 0:
+      case 2: /* these aren't supported yet */
+        break;
+      case 1: { /* only mode 1 is supported */
+        cpu->iff1 = false;
+        cpu->iff2 = false;
+        push(cpu, cpu->pc); /* save current pc*/
+        cpu->pc = 0x0038;
+        break;
+      }
+    }
+  }
+}
+
 void exchange(VirtZ80 *cpu, uint8_t regpair1, uint8_t regpair2, bool is_shadow) {
+  /* swap two registers, checks if shadow pair*/
   uint16_t temp1 = cpu->regs[regpair1] << 8 | cpu->regs[regpair1 + 1];
   uint16_t temp2 = 0;
 
@@ -203,6 +200,7 @@ void exchange(VirtZ80 *cpu, uint8_t regpair1, uint8_t regpair2, bool is_shadow) 
 }
 
 void exchange_af(VirtZ80 *cpu) {
+  /* af is a special case*/
   uint16_t temp1 = AF(cpu);
   uint16_t temp2 = cpu->shadow_regs[REG_A] << 8 | cpu->shadow_flags;
 
@@ -231,7 +229,7 @@ void fdc_init(char* path) {
   fdc.status = FDC_STATUS_OK; /* OK :)*/
 }
 
-void fdc_close() {
+void fdc_close() { /* should be called at the end */
   fclose(fdc.disk);
   fdc.disk = NULL;
   fdc.status = FDC_STATUS_OK;
@@ -280,7 +278,51 @@ void fdc_cmd(uint8_t cmd) {
   fdc.status = FDC_STATUS_OK;
 }
 
-void OutputHandler(uint8_t port, uint8_t value) {
+/* ACIA */
+
+void ACIA_init(ACIA_t *acia) {
+  /* no need to add mutex, this is called only once */
+  acia->ctrl = 0;
+  acia->status = 2; /* ready to transmit*/
+  acia->transmit = 0;
+  acia->receive = 0;
+}
+
+void ACIA_write_cmd(ACIA_t *acia, uint8_t value) {
+  pthread_mutex_lock(&acia_mutex);
+  if ((value & 0x03) == 0x03) { /* reset ACIA*/
+    acia->ctrl = 0;
+    acia->status = ACIA_THRE;
+    pthread_mutex_unlock(&acia_mutex);
+    return;
+  }
+  acia->ctrl = value;
+  pthread_mutex_unlock(&acia_mutex);
+}
+void ACIA_write_data(ACIA_t *acia, uint8_t value) {
+  pthread_mutex_lock(&acia_mutex);
+  acia->transmit = value;
+  printf("%c", value);
+  fflush(stdout); /* need to flush to work without '\n' newline. */
+  pthread_mutex_unlock(&acia_mutex);
+}
+
+uint8_t ACIA_read_data(ACIA_t *acia) {
+  pthread_mutex_lock(&acia_mutex);
+  uint8_t data = acia->receive;
+  acia->receive = 0;
+  acia->status &= ~(ACIA_RDRF | ACIA_OVRN);
+  pthread_mutex_unlock(&acia_mutex);
+  return data;
+}
+uint8_t ACIA_read_status(ACIA_t *acia) {
+  pthread_mutex_lock(&acia_mutex);
+  uint8_t status = acia->status;
+  pthread_mutex_unlock(&acia_mutex);
+  return status;
+}
+
+void output_handler(uint8_t port, uint8_t value) {
   switch (port) {
     /* Floppy */
     case FDC_PORT_CMD:
@@ -302,26 +344,31 @@ void OutputHandler(uint8_t port, uint8_t value) {
       fdc.count = value ? value : 1; /* If 0, set to 1 to prevent some bugs*/
       break;
 
-    /* STDIO*/
-    case STD_PORT:
-      printf("%c", value); /* or putchar, compiler will optimize it*/
-      fflush(stdout); /* need to flush to work without '\n' newline. */
+    /* ACIA(serial interface)*/
+    case PORT_ACIA_CMD:
+      ACIA_write_cmd(&acia, value);
       break;
+    case PORT_ACIA_DATA:
+      ACIA_write_data(&acia, value);
+      break;
+  
     default:
       break; /* No valid port*/
   }
 }
 
-uint8_t InputHandler(uint8_t port) {
+uint8_t input_handler(uint8_t port) {
   char input = 0;
   switch (port) {
-    /* STDIO */
-    case STD_PORT:
-      input = pop_char();
+    /* ACIA */
+    case PORT_ACIA_DATA:
+      input = ACIA_read_data(&acia);
       break;
-    case 0x80:
-      input = char_buf.count; /* Return buffer count, useful for checking if there is input*/
+    case PORT_ACIA_CMD:
+      input = ACIA_read_status(&acia);
       break;
+
+    /* Floppy */
     case FDC_PORT_STATUS:
       input = fdc.status;
       break;
@@ -1416,7 +1463,7 @@ int step_instruction(VirtZ80 *cpu) {
       cpu->cycles += 10;
       break;
     case 0xD3: // OUT (n), A
-      OutputHandler(fByte(cpu), cpu->regs[REG_A]);
+      output_handler(fByte(cpu), cpu->regs[REG_A]);
       cpu->cycles += 11;
       break;
     case 0xD4: // CALL NC, nn
@@ -1462,7 +1509,7 @@ int step_instruction(VirtZ80 *cpu) {
       cpu->cycles += 10;
       break;
     case 0xDB: // IN A, (n)
-      cpu->regs[REG_A] = InputHandler(fByte(cpu));
+      cpu->regs[REG_A] = input_handler(fByte(cpu));
       cpu->cycles += 11;
       break;
     case 0xDC: // CALL C, nn
@@ -1675,11 +1722,11 @@ void misc_instruction(VirtZ80 *cpu) {
   if (print_ins) printf("0xED Instruction: 0x%02x\n", opcode);
   switch (opcode) {
     case 0x40: // IN B, (C)
-      cpu->regs[REG_B] = InputHandler(cpu->regs[REG_C]);
+      cpu->regs[REG_B] = input_handler(cpu->regs[REG_C]);
       cpu->cycles += 12;
       break;
     case 0x41: // OUT (C), B
-      OutputHandler(cpu->regs[REG_C], cpu->regs[REG_B]);
+      output_handler(cpu->regs[REG_C], cpu->regs[REG_B]);
       cpu->cycles += 12;
       break;
     case 0x42: // SBC HL, BC
@@ -1708,11 +1755,11 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 9;
       break;
     case 0x48: // IN C, (C)
-      cpu->regs[REG_C] = InputHandler(cpu->regs[REG_C]);
+      cpu->regs[REG_C] = input_handler(cpu->regs[REG_C]);
       cpu->cycles += 12;
       break;
     case 0x49: // OUT (C), C
-      OutputHandler(cpu->regs[REG_C], cpu->regs[REG_C]);
+      output_handler(cpu->regs[REG_C], cpu->regs[REG_C]);
       cpu->cycles += 12;
       break;
     case 0x4A: // ADC HL, BC
@@ -1732,11 +1779,11 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 9;
       break;
     case 0x50: // IN D, (C)
-      cpu->regs[REG_D] = InputHandler(cpu->regs[REG_C]);
+      cpu->regs[REG_D] = input_handler(cpu->regs[REG_C]);
       cpu->cycles += 12;
       break;
     case 0x51: // OUT (C), D
-      OutputHandler(cpu->regs[REG_C], cpu->regs[REG_D]);
+      output_handler(cpu->regs[REG_C], cpu->regs[REG_D]);
       cpu->cycles += 12;
       break;
     case 0x52: // SBC HL, DE
@@ -1760,11 +1807,11 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 9;
       break;
     case 0x58: // IN E, (C)
-      cpu->regs[REG_E] = InputHandler(cpu->regs[REG_C]);
+      cpu->regs[REG_E] = input_handler(cpu->regs[REG_C]);
       cpu->cycles += 12;
       break;
     case 0x59: // OUT (C), E
-      OutputHandler(cpu->regs[REG_C], cpu->regs[REG_E]);
+      output_handler(cpu->regs[REG_C], cpu->regs[REG_E]);
       cpu->cycles += 12;
       break;
     case 0x5A: // ADC HL, DE
@@ -1789,11 +1836,11 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 9;
       break;
     case 0x60: // IN H, (C)
-      cpu->regs[REG_H] = InputHandler(cpu->regs[REG_C]);
+      cpu->regs[REG_H] = input_handler(cpu->regs[REG_C]);
       cpu->cycles += 12;
       break;
     case 0x61: // OUT (C), H
-      OutputHandler(cpu->regs[REG_C], cpu->regs[REG_H]);
+      output_handler(cpu->regs[REG_C], cpu->regs[REG_H]);
       cpu->cycles += 12;
       break;
     case 0x62: // SBC HL, HL
@@ -1825,11 +1872,11 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 18;
       break;
     case 0x68: // IN L, (C)
-      cpu->regs[REG_L] = InputHandler(cpu->regs[REG_C]);
+      cpu->regs[REG_L] = input_handler(cpu->regs[REG_C]);
       cpu->cycles += 12;
       break;
     case 0x69: // OUT (C), L
-      OutputHandler(cpu->regs[REG_C], cpu->regs[REG_L]);
+      output_handler(cpu->regs[REG_C], cpu->regs[REG_L]);
       cpu->cycles += 12;
       break;
     case 0x6A: // ADC HL, HL
@@ -1861,7 +1908,7 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 18;
       break;
     case 0x71: // OUT (C), 0
-      OutputHandler(cpu->regs[REG_C], 0);
+      output_handler(cpu->regs[REG_C], 0);
       cpu->cycles += 12;
       break;
     case 0x72: // SBC HL, SP
@@ -1873,11 +1920,11 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 20;
       break;
     case 0x78: // IN A, (C)
-      cpu->regs[REG_A] = InputHandler(cpu->regs[REG_C]);
+      cpu->regs[REG_A] = input_handler(cpu->regs[REG_C]);
       cpu->cycles += 12;
       break;
     case 0x79: // OUT (C), A
-      OutputHandler(cpu->regs[REG_C], cpu->regs[REG_A]);
+      output_handler(cpu->regs[REG_C], cpu->regs[REG_A]);
       cpu->cycles += 12;
       break;
     case 0x7A: // ADC HL, SP
@@ -1905,7 +1952,7 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 16;
       break;
     case 0xA2: // INI
-      mwrite8(HL(cpu), InputHandler(cpu->regs[REG_C]));
+      mwrite8(HL(cpu), input_handler(cpu->regs[REG_C]));
       set_hl(cpu, inc16(HL(cpu))); cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
       if (cpu->regs[REG_B] == 0) {
         setFlag(cpu, FLAG_PV, 0);
@@ -1913,7 +1960,7 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 16;
       break;
     case 0xA3: // OUTI
-      OutputHandler(cpu->regs[REG_C], mread8(HL(cpu)));
+      output_handler(cpu->regs[REG_C], mread8(HL(cpu)));
       set_hl(cpu, inc16(HL(cpu))); cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
       if (cpu->regs[REG_B] == 0) {
         setFlag(cpu, FLAG_PV, 0);
@@ -1937,7 +1984,7 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 16;
       break;
     case 0xAA: // IND
-      mwrite8(HL(cpu), InputHandler(cpu->regs[REG_C]));
+      mwrite8(HL(cpu), input_handler(cpu->regs[REG_C]));
       set_hl(cpu, dec16(HL(cpu))); cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
       if (cpu->regs[REG_B] == 0) {
         setFlag(cpu, FLAG_PV, 0);
@@ -1945,7 +1992,7 @@ void misc_instruction(VirtZ80 *cpu) {
       cpu->cycles += 16;
       break;
     case 0xAB: // OUTD
-      OutputHandler(cpu->regs[REG_C], mread8(HL(cpu)));
+      output_handler(cpu->regs[REG_C], mread8(HL(cpu)));
       set_hl(cpu, dec16(HL(cpu))); cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
       if (cpu->regs[REG_B] == 0) {
         setFlag(cpu, FLAG_PV, 0);
@@ -1977,7 +2024,7 @@ void misc_instruction(VirtZ80 *cpu) {
       }
       break;
     case 0xB2: // INIR
-      mwrite8(HL(cpu), InputHandler(cpu->regs[REG_C]));
+      mwrite8(HL(cpu), input_handler(cpu->regs[REG_C]));
       set_hl(cpu, inc16(HL(cpu))); cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
       if (cpu->regs[REG_B] != 0) {
         setFlag(cpu, FLAG_PV, 1);
@@ -1989,7 +2036,7 @@ void misc_instruction(VirtZ80 *cpu) {
       }
       break;
     case 0xB3: // OTIR
-      OutputHandler(cpu->regs[REG_C], mread8(HL(cpu)));
+      output_handler(cpu->regs[REG_C], mread8(HL(cpu)));
       set_hl(cpu, inc16(HL(cpu))); cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
       if (cpu->regs[REG_B] != 0) {
         setFlag(cpu, FLAG_PV, 1);
@@ -2025,7 +2072,7 @@ void misc_instruction(VirtZ80 *cpu) {
       }
       break;
     case 0xBA: // INDR
-      mwrite8(HL(cpu), InputHandler(cpu->regs[REG_C]));
+      mwrite8(HL(cpu), input_handler(cpu->regs[REG_C]));
       set_hl(cpu, dec16(HL(cpu))); cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
       if (cpu->regs[REG_B] != 0) {
         setFlag(cpu, FLAG_PV, 1);
@@ -2037,7 +2084,7 @@ void misc_instruction(VirtZ80 *cpu) {
       }
       break;
     case 0xBB: // OTDR
-      OutputHandler(cpu->regs[REG_C], mread8(HL(cpu)));
+      output_handler(cpu->regs[REG_C], mread8(HL(cpu)));
       set_hl(cpu, dec16(HL(cpu))); cpu->regs[REG_B] = dec8(cpu, cpu->regs[REG_B]);
       if (cpu->regs[REG_B] != 0) {
         setFlag(cpu, FLAG_PV, 1);
@@ -2562,7 +2609,7 @@ void index_instruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do t
   }
 }
 
-void printState(VirtZ80 *cpu) {
+void print_state(VirtZ80 *cpu) {
   printf(
     "AF=0x%04x BC=0x%04x DE=0x%04x HL=0x%04x IX=0x%04x IY=0x%04x SP=0x%04x PC=0x%04x IFF1=0x%01x IFF2=0x%01x | cycles=0x%016lx\n",
     AF(cpu), BC(cpu), DE(cpu), HL(cpu), cpu->ix, cpu->iy, cpu->sp, cpu->pc,
@@ -2570,7 +2617,7 @@ void printState(VirtZ80 *cpu) {
   );
 }
 
-void stackTrace(VirtZ80 *cpu, int depth) {
+void stack_trace(VirtZ80 *cpu, int depth) {
   printf("--STACK TRACE--\n");
   int sp = cpu->sp;
   for (int i = 0; i < depth; i++) {
@@ -2581,7 +2628,7 @@ void stackTrace(VirtZ80 *cpu, int depth) {
   }
 }
 
-void printMemory(VirtZ80 *cpu) {
+void print_memory(VirtZ80 *cpu) {
   printf("--MEMORY--\n");
   for (int i = 0; i < MEM_SIZE; i += 16) {
     printf("%04x: ", i);
@@ -2629,6 +2676,8 @@ int main(int argc, char **argv) {
       fdc_init(argv[i+1]);
     } else if (strcmp(argv[i], "--speed") == 0) { /* set target clockspeed*/
       target_speed = strtol(argv[i+1], NULL, 10);
+    } else if (strcmp(argv[i], "--newformat") == 0) { /* use for newer programs that expects modern terminal format */
+      old_format = false;
     }
 
   }
@@ -2642,7 +2691,7 @@ int main(int argc, char **argv) {
     printf("No floppy disk specified\n");
   }
 
-  frame_ns = 1000000000L / target_speed;
+  frame_ns = 1000000000L / target_speed; /* calculate frame time in nanoseconds*/
   clock_gettime(CLOCK_MONOTONIC, &cycles_time); /* Initialize the clock*/
 
   struct termios oldt, newt; /* Terminal settings*/
@@ -2671,24 +2720,28 @@ int main(int argc, char **argv) {
 
   printf("Loaded %d bytes\n", bytes_read);
 
-  if (printmem) printMemory(&cpu);
+  if (printmem) print_memory(&cpu);
 
   cpu.pc = start_pc;
+
+  ACIA_init(&acia); /* initialize the ACIA*/
 
   pthread_t input_thread_thread; /* This way the input doesn't block the execution, maybe add an interrupt when character is available?*/
   pthread_create(&input_thread_thread, NULL, input_thread, NULL);
 
+  /* main loop */
   execute(&cpu);
   printf("CPU State: ");
-  printState(&cpu);
+  print_state(&cpu);
 
-  if (fdc.disk != NULL) {
+  if (fdc.disk != NULL) { /* close the disk, if open*/
     fdc_close();
   }
   
-  input_thread_stop = true;
+  input_thread_stop = true; /* signal the input thread to stop */
   pthread_cancel(input_thread_thread); /* Use pthread_kill(input_thread_thread, 0) if not working*/
   pthread_join(input_thread_thread, NULL);
+  pthread_mutex_destroy(&acia_mutex);
 
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // Restore old settings
 

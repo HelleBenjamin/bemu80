@@ -5,10 +5,14 @@ Bemu80 is a Z80 emulator written in C for POSIX-compliant systems. It's currentl
 but expect to find bugs and missing features. If you find any bugs, please report them. 
 The emulator supports all the documented instructions + a few undocumented ones.
 
-The main branch is the most up to date and therefore is recommended to use..
+The main branch is the most up to date and therefore is recommended to use, use releases if you want to use a specific version.
 
-See https://github.com/HelleBenjamin/bemu80-basic to get modified BASIC 4.7 for the emulator.
-The repository contains the source code of modified BASIC 4.7 for the Bemu80 emulator.
+The emulator runs Grant Searle's BASIC(http://searle.x10host.com/z80/SimpleZ80.html) without any problems.
+Note that the emulator automatically converts input newlines to older style `\r` instead of `\n`, can be disabled using the `--newformat` flag. 
+This is because the old terminal format is more common.
+
+Bemu80 has simple 6850 ACIA emulation, which is used for serial communication.
+It's not very accurate, but it's enough for most purposes.
 
 Building
 ========
@@ -37,6 +41,7 @@ The binary program to be executed is specified as the first argument.
 Example: `bemu80 --rom test.bin`.
 The emulator accepts the following arguments:
 
+- `--help`: Show this help message.
 - `--rom <file>`: Load a ROM file.
 - `--romsize <size>`: Set the size of the ROM. Default is 8k (0x2000).
 - `--ramsize <size>`: Set the size of the RAM. Default is 56k (0xE000).
@@ -45,6 +50,7 @@ The emulator accepts the following arguments:
 - `--bp <address>`: Set a breakpoint at the specified address.
 - `--fd <file>`: Set the floppy disk file.
 - `--speed <speed>`: Set the target emulation speed in Hz.
+- `--newformat`: Use modern terminal format. This may break compatibility with older programs that use the old terminal format.
 
 
 Contributing
@@ -55,10 +61,13 @@ If you want to contribute to Bemu80, you can fork the repository and submit a pu
 Backstory
 =========
 
-Bemu80 is my 4th and final attempt at writing a Z80 emulator. 
+I started making Z80 emulators back in 2022.
+Since then I've rewritten the emulator a few times and I think it's finally good enough.
+Bemu80 is my 4th and final attempt at writing a Z80 emulator. So no rewrite is coming.
 So that's why the versioning starts at v0.4.0 and not v0.1.0.
 
 License
 =======
+Copyright (c) 2025-2026 Benjamin Helle
 
 Bemu80 is released under the GPL v2 license.

@@ -107,7 +107,9 @@ typedef struct {
   FILE* disk;
 } FDC_t;
 
+/*CPU related*/
 void execute(VirtZ80 *cpu);
+void interrupt(VirtZ80 *cpu);
 
 static inline void mwrite8(uint16_t address, uint8_t value);
 static inline uint8_t mread8(uint16_t address);
@@ -117,19 +119,42 @@ static inline uint16_t mread16( uint16_t address);
 static inline uint8_t fByte(VirtZ80 *cpu);
 static inline uint16_t fWord(VirtZ80 *cpu);
 
-void OutputHandler(uint8_t port, uint8_t value);
-uint8_t InputHandler(uint8_t port);
+void output_handler(uint8_t port, uint8_t value);
+uint8_t input_handler(uint8_t port);
 
-void printState(VirtZ80 *cpu);
-void stackTrace(VirtZ80 *cpu, int depth);
-void printMemory(VirtZ80 *cpu);
+void print_state(VirtZ80 *cpu);
+void stack_trace(VirtZ80 *cpu, int depth);
+void print_memory(VirtZ80 *cpu);
 
 int step_instruction(VirtZ80 *cpu);
 void misc_instruction(VirtZ80 *cpu);
 void bit_instruction(VirtZ80 *cpu);
 void index_instruction(VirtZ80 *cpu, uint16_t* index_reg);
 
+/*6850 ACIA*/
+
+#define ACIA_RDRF 0x01
+#define ACIA_THRE 0x02
+#define ACIA_IRQ  0x80
+#define ACIA_RIE  0x80
+#define ACIA_CTS  0x08
+#define ACIA_OVRN 0x20
+
+#define PORT_ACIA_DATA 0x81
+#define PORT_ACIA_CMD  0x80
+
+typedef struct {
+  uint8_t ctrl, status, transmit, receive;
+} ACIA_t;
+
+void ACIA_init(ACIA_t *acia);
+void ACIA_write_cmd(ACIA_t *acia, uint8_t value);
+void ACIA_write_data(ACIA_t *acia, uint8_t value);
+uint8_t ACIA_read_data(ACIA_t *acia);
+uint8_t ACIA_read_status(ACIA_t *acia);
+
 /*DEBUG STUFF*/
+void debug_mode(VirtZ80 *cpu);
 void draw_registers(VirtZ80 *cpu);
 void draw_memory(VirtZ80 *cpu);
 void init_debug_ui();
