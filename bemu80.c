@@ -875,6 +875,7 @@ int step_instruction(VirtZ80 *cpu) {
         cpu->regs[REG_A] = result & 0xFF;
 
         update_flagsYX(cpu, cpu->regs[REG_A]);
+        cpu->cycles += 4;
       }
       break;
     case 0x10: // DJNZ d
