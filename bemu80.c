@@ -28,6 +28,8 @@ uint16_t ram_size = 0xE000; /* 56k RAM, starts at the end of ROM*/
 uint16_t breakpoint = 0x0000;
 bool enable_breakpoint = false;
 
+struct termios oldt, newt; /* Terminal settings*/
+
 /* global "hardware" variables */
 FDC_t fdc;
 VirtZ80 cpu;
@@ -121,11 +123,12 @@ void execute(VirtZ80 *cpu) {
   while (!cpu->halt) {
     if (cpu->pc == breakpoint && enable_breakpoint) {
       cpu->halt = true;
+      input_thread_stop = true; /* stop input thread*/
+      tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
       while (1) { /* Dummy debug function, for now*/
         printf("> ");
         fflush(stdout);
-        char input = 0;
-        while (input == 0) input = getchar(); /*TODO FIX*/
+        char input = getchar(); /*TODO FIX*/
         if (input == 'c') {
           cpu->halt = false;
           break;
@@ -246,8 +249,13 @@ void fdc_cmd(uint8_t cmd) {
 
   uint16_t cur_lba = fdc.lba; 
   uint16_t cur_dma = fdc.dma;
+  uint16_t cur_count = fdc.count;
 
-  for (int c = 0; c < fdc.count; c++) {
+  fdc.lba = 0; /* reset values*/
+  fdc.dma = 0;
+  fdc.count = 0;
+
+  for (int c = 0; c < cur_count; c++) {
     uint32_t offset = cur_lba * FDC_SECTOR_SIZE;
 
    /*printf("DMA: 0x%04x, LBA: 0x%04x, OFFSET: 0x%08x\n", cur_dma, cur_lba, offset);*/
@@ -889,7 +897,7 @@ int step_instruction(VirtZ80 *cpu) {
       break;
     case 0x11: // LD DE, nn
       set_de(cpu, fWord(cpu));
-      cpu->cycles += 5;
+      cpu->cycles += 10;
       break;
     case 0x12: // LD (DE), A
       mwrite8(DE(cpu), cpu->regs[REG_A]);
@@ -2097,7 +2105,7 @@ void misc_instruction(VirtZ80 *cpu) {
       }
       break;
     default:
-      printf("Unknown MISC opcode: 0x%02x\n", opcode);
+      printf("[BEMU80] Unknown MISC opcode: 0x%02x at 0x%04x\n", opcode, cpu->pc);
       break;
   }
 }
@@ -2605,16 +2613,16 @@ void index_instruction(VirtZ80 *cpu, uint16_t* index_reg) { // Smart way to do t
       cpu->cycles += 10;
       break;
     default:
-      printf("Unknown index instruction: 0x%02x at 0x%04x\n", opcode, cpu->pc);
+      printf("[BEMU80] Unknown index instruction: 0x%02x at 0x%04x\n", opcode, cpu->pc);
       return;
   }
 }
 
 void print_state(VirtZ80 *cpu) {
   printf(
-    "AF=0x%04x BC=0x%04x DE=0x%04x HL=0x%04x IX=0x%04x IY=0x%04x SP=0x%04x PC=0x%04x IFF1=0x%01x IFF2=0x%01x | cycles=0x%016lx\n",
+    "AF=0x%04x BC=0x%04x DE=0x%04x HL=0x%04x IX=0x%04x IY=0x%04x SP=0x%04x PC=0x%04x IFF1=0x%01x IFF2=0x%01x IM=0x%02x ACIA_CTRL=0x%02x ACIA_STU=0x%02x | cycles=0x%016lx\n",
     AF(cpu), BC(cpu), DE(cpu), HL(cpu), cpu->ix, cpu->iy, cpu->sp, cpu->pc,
-    cpu->iff1, cpu->iff2, cpu->cycles
+    cpu->iff1, cpu->iff2, cpu->im, acia.ctrl, acia.status, cpu->cycles
   );
 }
 
@@ -2694,8 +2702,6 @@ int main(int argc, char **argv) {
 
   frame_ns = 1000000000L / target_speed; /* calculate frame time in nanoseconds*/
   clock_gettime(CLOCK_MONOTONIC, &cycles_time); /* Initialize the clock*/
-
-  struct termios oldt, newt; /* Terminal settings*/
 
   tcgetattr(STDIN_FILENO, &oldt); /* Save old settings */
   newt = oldt;
