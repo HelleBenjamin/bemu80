@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define MEM_SIZE 0x10000 // 64k
+#define MEM_SIZE 0xFFFF // 64k
 #define STD_PORT 0x81
 
 #define FLAG_C  0x01
@@ -19,6 +19,16 @@
 #define FLAG_Y  0x20 /* undocumented */
 #define FLAG_Z  0x40
 #define FLAG_S  0x80
+
+/* flags in decoded order, used in instructions*/
+#define F_NZ 0
+#define F_Z 1
+#define F_NC 2
+#define F_C 3
+#define F_PO 4
+#define F_PE 5
+#define F_P 6
+#define F_M 7
 
 #define ALU_OP_ADD  0x00
 #define ALU_OP_ADC  0x01
@@ -126,7 +136,7 @@ void print_state(VirtZ80 *cpu);
 void stack_trace(VirtZ80 *cpu, int depth);
 void print_memory(VirtZ80 *cpu);
 
-int step_instruction(VirtZ80 *cpu);
+int step(VirtZ80 *cpu);
 void misc_instruction(VirtZ80 *cpu);
 void bit_instruction(VirtZ80 *cpu);
 void index_instruction(VirtZ80 *cpu, uint16_t* index_reg);
