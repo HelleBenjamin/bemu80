@@ -1185,7 +1185,7 @@ void group_x3(VirtZ80 *cpu, uint8_t opcode) {
           break;
         }
         case 1: { /* CB prefix, bit instructions*/
-          bit_instruction(cpu);
+          prefix_cb(cpu);
           break;
         }
         case 2: { /* OUT (n), A*/
@@ -1709,164 +1709,85 @@ void misc_instruction(VirtZ80 *cpu) {
   }
 }
 
-
-void bit_instruction(VirtZ80 *cpu) {
+void prefix_cb(VirtZ80 *cpu) {
+  /*Bit instructions*/
   uint8_t opcode = fByte(cpu);
-  switch (opcode) {
-    case 0x00: // RLC reg
-    case 0x01:
-    case 0x02:
-    case 0x03:
-    case 0x04:
-    case 0x05:
-    case 0x07:
-      cpu->regs[(opcode & 0x07)] = rlc8(cpu, cpu->regs[(opcode & 0x07)]);
-      cpu->cycles += 8;
-      break;
-    case 0x06: // RLC (HL)
-      mwrite8(HL(cpu), rlc8(cpu, mread8(HL(cpu))));
-      cpu->cycles += 15;
-      break;
+  uint8_t x = opcode >> 6;
+  uint8_t y = (opcode >> 3) & 7;
+  uint8_t z = opcode & 7;
 
-    case 0x08: // RRC reg
-    case 0x09:
-    case 0x0A:
-    case 0x0B:
-    case 0x0C:
-    case 0x0D:
-    case 0x0F:
-      cpu->regs[((opcode-8) & 0x07)] = rrc8(cpu, cpu->regs[((opcode-8) & 0x07)]);
-      cpu->cycles += 8;
+  switch (x) {
+    case 0: { /*x=0*/
+      /*ROTATE*/
+      switch (y) {
+        case 0: {
+          /*RLC*/
+          set_r8(cpu, z, rlc8(cpu, get_r8(cpu, z)));
+          cpu->cycles += (y == 6) ? 15 : 8;
+          break;
+        }
+        case 1: {
+          /*RRC*/
+          set_r8(cpu, z, rrc8(cpu, get_r8(cpu, z)));
+          cpu->cycles += (y == 6) ? 15 : 8;
+          break;
+        }
+        case 2: {
+          /*RL*/
+          set_r8(cpu, z, rl8(cpu, get_r8(cpu, z)));
+          cpu->cycles += (y == 6) ? 15 : 8;
+          break;
+        }
+        case 3: {
+          /*RR*/
+          set_r8(cpu, z, rr8(cpu, get_r8(cpu, z)));
+          cpu->cycles += (y == 6) ? 15 : 8;
+          break;
+        }
+        case 4: {
+          /*SLA*/
+          set_r8(cpu, z, sla8(cpu, get_r8(cpu, z)));
+          cpu->cycles += (y == 6) ? 15 : 8;
+          break;
+        }
+        case 5: {
+          /*SRA*/
+          set_r8(cpu, z, sla8(cpu, get_r8(cpu, z)));
+          cpu->cycles += (y == 6) ? 15 : 8;
+          break;
+        }
+        case 6: {
+          /*SLL*/
+          set_r8(cpu, z, sll8(cpu, get_r8(cpu, z)));
+          cpu->cycles += (y == 6) ? 15 : 8;
+          break;
+        }
+        case 7: {
+          /*SRL*/
+          set_r8(cpu, z, srl8(cpu, get_r8(cpu, z)));
+          cpu->cycles += (y == 6) ? 15 : 8;
+          break;
+        }
+      }
       break;
-    case 0x0E: // RRC (HL)
-      mwrite8(HL(cpu), rrc8(cpu, mread8(HL(cpu))));
-      cpu->cycles += 15;
-      break;
-    
-    case 0x10: // RL reg
-    case 0x11:
-    case 0x12:
-    case 0x13:
-    case 0x14:
-    case 0x15:
-    case 0x17:
-      cpu->regs[(opcode & 0x07)] = rl8(cpu, cpu->regs[(opcode & 0x07)]);
-      cpu->cycles += 8;
-      break;
-    case 0x16: // RL (HL)
-      mwrite8(HL(cpu), rl8(cpu, mread8(HL(cpu))));
-      cpu->cycles += 15;
-      break;
-
-    case 0x18: // RR reg
-    case 0x19:
-    case 0x1A:
-    case 0x1B:
-    case 0x1C:
-    case 0x1D:
-    case 0x1F:
-      cpu->regs[((opcode-8) & 0x07)] = rr8(cpu, cpu->regs[((opcode-8) & 0x07)]);
-      cpu->cycles += 8;
-      break;
-    case 0x1E: // RR (HL)
-      mwrite8(HL(cpu), rr8(cpu, mread8(HL(cpu))));
-      cpu->cycles += 15;
-      break;
-
-    case 0x20: // SLA reg
-    case 0x21:
-    case 0x22:
-    case 0x23:
-    case 0x24:
-    case 0x25:
-    case 0x27:
-      cpu->regs[(opcode & 0x07)] = sla8(cpu, cpu->regs[(opcode & 0x07)]);
-      cpu->cycles += 8;
-      break;
-    case 0x26: // SLA (HL)
-      mwrite8(HL(cpu), sla8(cpu, mread8(HL(cpu))));
-      cpu->cycles += 15;
-      break;
-
-    case 0x28: // SRA reg
-    case 0x29:
-    case 0x2A:
-    case 0x2B:
-    case 0x2C:
-    case 0x2D:
-    case 0x2F:
-      cpu->regs[((opcode-8) & 0x07)] = sra8(cpu, cpu->regs[((opcode-8) & 0x07)]);
-      cpu->cycles += 8;
-      break;
-    case 0x2E: // SRA (HL)
-      mwrite8(HL(cpu), sra8(cpu, mread8(HL(cpu))));
-      cpu->cycles += 15;
-      break;
-
-    case 0x30: // SLL reg
-    case 0x31:
-    case 0x32:
-    case 0x33:
-    case 0x34:
-    case 0x35:
-    case 0x37:
-      cpu->regs[(opcode & 0x07)] = sll8(cpu, cpu->regs[(opcode & 0x07)]);
-      cpu->cycles += 8;
-      break;
-    case 0x36: // SLL (HL)
-      mwrite8(HL(cpu), sll8(cpu, mread8(HL(cpu))));
-      cpu->cycles += 15;
-      break;
-
-    case 0x38: // SRL reg
-    case 0x39:
-    case 0x3A:
-    case 0x3B:
-    case 0x3C:
-    case 0x3D:
-    case 0x3F:
-      cpu->regs[((opcode-8) & 0x07)] = srl8(cpu, cpu->regs[((opcode-8) & 0x07)]);
-      cpu->cycles += 8;
-      break;
-    case 0x3E: // SRL (HL)
-      mwrite8(HL(cpu), srl8(cpu, mread8(HL(cpu))));
-      cpu->cycles += 15;
-      break;
-    default:
-      break;
-  }
-  if (opcode >= 0x40 && opcode <= 0x7F) { /* BIT */
-    uint8_t bit = (opcode >> 3) & 0x07;
-    uint8_t reg = opcode & 0x07;
-    
-    if (reg == 0x06) { /* (HL)*/
-      bit8(cpu, mread8(HL(cpu)), bit);
-      cpu->cycles += 12;
-    } else {
-      bit8(cpu, cpu->regs[reg], bit);
-      cpu->cycles += 8;
     }
-  } else if (opcode >= 0x80 && opcode <= 0xBF) { /* RES*/
-    uint8_t bit = (opcode >> 3) & 0x07;
-    uint8_t reg = opcode & 0x07;
-    
-    if (reg == 0x06) { /* (HL)*/
-      mwrite8(HL(cpu),res8(cpu, mread8(HL(cpu)), bit));
-      cpu->cycles += 12;
-    } else {
-      cpu->regs[reg] = res8(cpu, cpu->regs[reg], bit);
-      cpu->cycles += 8;
+
+    case 1: { /*x=1*/
+      /* BIT*/
+      bit8(cpu, get_r8(cpu,z), y);
+      break;
     }
-  } else if (opcode >= 0xC0 && opcode <= 0xFF) { /* SET*/
-    uint8_t bit = (opcode >> 3) & 0x07;
-    uint8_t reg = opcode & 0x07;
-    
-    if (reg == 0x06) { /* (HL)*/
-      mwrite8(HL(cpu),set8(cpu, mread8(HL(cpu)), bit));
-      cpu->cycles += 12;
-    } else {
-      cpu->regs[reg] = set8(cpu, cpu->regs[reg], bit);
-      cpu->cycles += 8;
+
+    case 2: { /*x=2*/
+      /* RES*/
+      set_r8(cpu, z, res8(cpu, get_r8(cpu, z), y));
+      break;
+    }
+
+    case 3: { /*x=3*/
+      /*SET*/
+      set_r8(cpu, z, set8(cpu, get_r8(cpu, z), y));
+      break;
     }
   }
 }
@@ -2401,8 +2322,11 @@ void print_memory(VirtZ80 *cpu) {
 }
 
 int main(int argc, char **argv) {
+
+  printf("BEMU80 %s\n", (char*)VERSION_STR);
+
   if (argc < 2) {
-    printf("Usage: ./bemu80 <program>\n");
+    printf("Usage: %s <options>\nTo see the options, run %s -h\n", argv[0], argv[0]);
     return 1;
   }
 
@@ -2414,27 +2338,45 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--debug") == 0) {
       print_ins = true;
-    } else if (strcmp(argv[i], "--pc") == 0) {
-      start_pc = strtol(argv[i+1], NULL, 16);
+    } else if (strcmp(argv[i], "-pc") == 0) {
+      start_pc = strtol(argv[i+1], NULL, 0);
     } else if (strcmp(argv[i], "--romsize") == 0) {
-      rom_size = strtol(argv[i+1], NULL, 16);
+      rom_size = strtol(argv[i+1], NULL, 0);
     } else if (strcmp(argv[i], "--ramsize") == 0) {
-      ram_size = strtol(argv[i+1], NULL, 16);
+      ram_size = strtol(argv[i+1], NULL, 0);
     } else if (strcmp(argv[i], "--rom") == 0) {
       rom = fopen(argv[i+1], "rb");
       if (rom == NULL) {
         perror("fopen");
         exit(1);
       }
-    } else if (strcmp(argv[i], "--bp") == 0) {
-      breakpoint = strtol(argv[i+1], NULL, 16);
+    } else if (strcmp(argv[i], "-bp") == 0) {
+      breakpoint = strtol(argv[i+1], NULL, 0);
       enable_breakpoint = true;
-    } else if (strcmp(argv[i], "--fd") == 0) {
+    } else if (strcmp(argv[i], "-fd") == 0) {
       fdc_init(argv[i+1]);
     } else if (strcmp(argv[i], "--speed") == 0) { /* set target clockspeed*/
-      target_speed = strtol(argv[i+1], NULL, 10);
-    } else if (strcmp(argv[i], "--newformat") == 0) { /* use for newer programs that expects modern terminal format */
+      target_speed = strtol(argv[i+1], NULL, 0);
+    } else if (strcmp(argv[i], "--newformat") == 0) { /* use for newer programs that expect modern terminal format */
       old_format = false;
+    } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+      /*help messa*/
+      printf(
+        "Usage: %s <options>\n"
+        "Options:\n"
+        "--debug: Enable debug mode: prints the state after each instruction\n"
+        "-pc <pos>: Set initial program counter position\n"
+        "--romsize <size>: Size of ROM region\n"
+        "--ramsize <size>: Size of RAM region\n"
+        "--rom <file>: The ROM file to be loaded and executed\n"
+        "-bp <addr>: Breakpoint where the execution halts, debug only\n"
+        "-fd <file>: Floppy disk file for the FDC\n"
+        "--speed <speed>: Target clockspeed in Hz\n"
+        "--newformat: Use modern terminal format, may not work for older programs\n"
+        "--help: Print this message\n",
+        argv[0]
+      );
+      return 0;
     }
 
   }

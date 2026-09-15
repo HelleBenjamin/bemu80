@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#define VERSION_STR "v0.4.4"
+
 #define MEM_SIZE 0xFFFF // 64k
 #define STD_PORT 0x81
 
@@ -137,6 +139,7 @@ void stack_trace(VirtZ80 *cpu, int depth);
 void print_memory(VirtZ80 *cpu);
 
 int step(VirtZ80 *cpu);
+void prefix_cb(VirtZ80 *cpu);
 void misc_instruction(VirtZ80 *cpu);
 void bit_instruction(VirtZ80 *cpu);
 void index_instruction(VirtZ80 *cpu, uint16_t* index_reg);
