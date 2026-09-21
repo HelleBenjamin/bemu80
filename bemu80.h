@@ -140,6 +140,7 @@ void print_memory(VirtZ80 *cpu);
 
 int step(VirtZ80 *cpu);
 void prefix_cb(VirtZ80 *cpu);
+void prefix_ed(VirtZ80 *cpu);
 void misc_instruction(VirtZ80 *cpu);
 void bit_instruction(VirtZ80 *cpu);
 void index_instruction(VirtZ80 *cpu, uint16_t* index_reg);
