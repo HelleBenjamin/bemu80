@@ -115,6 +115,20 @@ static void set_r8(VirtZ80 *cpu, uint8_t reg, uint8_t val) {
   else cpu->regs[reg] = val;
 }
 
+static uint8_t get_r8_index(VirtZ80 *cpu, uint8_t reg, uint16_t *index_reg) {
+  if (reg == 6) return *index_reg + (int8_t)fByte(cpu); /* (HL) becomes (IX/IY+d)*/
+  else if (reg == 4) return GET_HIGH(*index_reg);
+  else if (reg == 5) return GET_LOW(*index_reg);
+  return cpu->regs[reg];
+}
+
+static void set_r8_index(VirtZ80 *cpu, uint8_t reg, uint8_t val, uint16_t *index_reg) {
+  if (reg == 6) mwrite8((*index_reg + (int8_t)fByte(cpu)), val);
+  else if (reg == 4) set_high(index_reg, val);
+  else if (reg == 5) set_low(index_reg, val);
+  else cpu->regs[reg] = val;
+}
+
 static void set_r16_1(VirtZ80 *cpu, uint8_t reg, uint16_t val) {
   /* BC, DE, HL, SP*/
   if (reg == 3) cpu->sp = val; /* special case*/
@@ -122,6 +136,26 @@ static void set_r16_1(VirtZ80 *cpu, uint8_t reg, uint16_t val) {
     uint8_t reg_index = reg * 2;
     cpu->regs[reg_index] = (val >> 8) & 0xFF;
     cpu->regs[reg_index+1] = val & 0xFF;
+  } 
+}
+
+static void set_r16_index(VirtZ80 *cpu, uint8_t reg, uint16_t val, uint16_t *index_reg) {
+  /* BC, DE, IX/IY, SP*/
+  if (reg == 3) cpu->sp = val; /* special case*/
+  else if (reg == 2) *index_reg = val;
+  else {
+    uint8_t reg_index = reg * 2;
+    cpu->regs[reg_index] = (val >> 8) & 0xFF;
+    cpu->regs[reg_index+1] = val & 0xFF;
+  } 
+}
+
+static uint16_t get_r16_index(VirtZ80 *cpu, uint8_t reg, uint16_t *index_reg) {
+  if (reg == 3) return cpu->sp;
+  else if (reg == 2) return *index_reg;
+  else {
+    uint8_t reg_index = reg * 2;
+    return (cpu->regs[reg_index] << 8 | cpu->regs[reg_index+1]);
   } 
 }
 
@@ -1360,6 +1394,7 @@ void group_x3(VirtZ80 *cpu, uint8_t opcode) {
           }
           case 1: { /* DD prefix, index IX*/
             index_instruction(cpu, &cpu->ix);
+            //prefix_dd_fd(cpu, &cpu->ix);
             break;
           }
           case 2: { /* ED prefix, misc ins.*/
@@ -1368,6 +1403,7 @@ void group_x3(VirtZ80 *cpu, uint8_t opcode) {
           }
           case 3: { /* FD prefix, index IY*/
             index_instruction(cpu, &cpu->iy);
+            //prefix_dd_fd(cpu, &cpu->iy);
             break; 
           }
         }
@@ -1673,6 +1709,131 @@ void prefix_cb(VirtZ80 *cpu) {
       break;
     }
   }
+}
+
+void prefix_dd_fd(VirtZ80 *cpu, uint16_t *index_reg) {
+  uint8_t opcode = fByte(cpu);
+  uint8_t x = opcode >> 6;
+  uint8_t y = (opcode >> 3) & 7;
+  uint8_t z = opcode & 7;
+  uint8_t p = y >> 1;
+  uint8_t q = y & 1;
+
+  switch (x) {
+    case 0: { /*x=0*/
+      switch (z) {
+        case 1: { /*z=1*/
+          if (q) {
+            /* q=1, ADD IX/IY, rr*/
+            *index_reg = add16(cpu, *index_reg, get_r16_index(cpu, p, index_reg));
+            cpu->cycles += 15;
+          } else if (!q && p == 2){
+            /* q=0, only LD IX/IY, nn present*/
+            *index_reg = fWord(cpu);
+            cpu->cycles += 14;
+          }
+          break;
+        }
+
+        case 3: { /*z=3*/
+          if (q) {
+            /*q=1, DEC IX/IY only*/
+            *index_reg = dec16(*index_reg);
+          } else {
+            /*q=0, INC IX/IY only*/
+            *index_reg = inc16(*index_reg);
+          }
+          cpu->cycles += 10;
+          break;
+        }
+
+        case 4: { /*z=4*/
+          /* INC r*/
+          set_r8_index(cpu, y, inc8(cpu, get_r8_index(cpu, y, index_reg)), index_reg);
+          cpu->cycles += (y == 6) ? 23 : 8;
+          break;
+        }
+
+        case 5: { /*z=5*/
+          /* DEC r*/
+          set_r8_index(cpu, y, dec8(cpu, get_r8_index(cpu, y, index_reg)), index_reg);
+          cpu->cycles += (y == 6) ? 23 : 8;
+          break;
+        }
+
+        case 6: { /*z=6*/
+          /* LD r, n*/
+          set_r8_index(cpu, y, fByte(cpu), index_reg);
+          cpu->cycles += (y == 6) ? 19 : 11;
+          break;
+        }
+      }
+      break;
+    }
+
+    case 1: { /*x=1*/
+      /* load group, replace H with IXH/IYH, L with IXL/IYL, (HL) with (IX/IY+d)*/
+      if (y !=6 && z != 6) {
+        set_r8_index(cpu, y, get_r8_index(cpu, z, index_reg), index_reg);
+        cpu->cycles += (y == 6) ? 19 : 8;
+      } else {
+        cpu->cycles += 8; /* NOP*/
+      }
+      break;
+    }
+
+    case 2: { /*x=2*/
+      /* ALU group*/
+      switch (y) {
+        case 0: cpu->regs[REG_A] = add8(cpu, cpu->regs[REG_A], get_r8_index(cpu, z, index_reg)); break;
+        case 1: cpu->regs[REG_A] = adc8(cpu, cpu->regs[REG_A], get_r8_index(cpu, z, index_reg)); break;
+        case 2: cpu->regs[REG_A] = sub8(cpu, cpu->regs[REG_A], get_r8_index(cpu, z, index_reg)); break;
+        case 3: cpu->regs[REG_A] = sbc8(cpu, cpu->regs[REG_A], get_r8_index(cpu, z, index_reg)); break;
+        case 4: cpu->regs[REG_A] = and8(cpu, cpu->regs[REG_A], get_r8_index(cpu, z, index_reg)); break;
+        case 5: cpu->regs[REG_A] = xor8(cpu, cpu->regs[REG_A], get_r8_index(cpu, z, index_reg)); break;
+        case 6: cpu->regs[REG_A] = or8(cpu, cpu->regs[REG_A], get_r8_index(cpu, z, index_reg)); break;
+        case 7: cp8(cpu, cpu->regs[REG_A], get_r8_index(cpu, z, index_reg)); break;
+      }
+
+      cpu->cycles += (y == 6) ? 19 : 8;
+    }
+
+    case 3: { /*x=3*/
+      switch (z) {
+        case 1: { /*z=1*/
+          if (!q && p == 2) {
+            /* only pops IX/IY*/
+            *index_reg = pop(cpu);
+            cpu->cycles += 14;
+          } else {
+            if (p == 2) {
+              /* JP (IX/IY)*/
+              cpu->pc = *index_reg;
+              cpu->cycles += 8;
+            } else if (p == 3) {
+              /* LD SP, IX/IY*/
+              cpu->sp = *index_reg;
+              cpu->cycles += 8;
+            }
+          }
+          break;
+        }
+
+        case 3: { /*z=3*/
+          if (y==1) {
+            bit_instruction_index(cpu, index_reg);
+          } else if (y==4) {
+            cpu->wz = *index_reg;
+            *index_reg = mread16(cpu->sp);
+            mwrite16(cpu->sp, cpu->wz);
+            cpu->cycles += 23;
+            break;
+          }
+        }
+      }
+    }
+  }
+
 }
 
 void bit_instruction_index(VirtZ80 *cpu, uint16_t* index_reg) {
