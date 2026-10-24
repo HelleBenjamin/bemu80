@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
+/* SPDX-License-Identifier: GPL-2.0-only
  * Copyright (c) 2025-2026 Benjamin Helle
 */ 
 #include "bemu80.h"
@@ -1625,81 +1625,46 @@ void prefix_cb(VirtZ80 *cpu) {
   uint8_t x = opcode >> 6;
   uint8_t y = (opcode >> 3) & 7;
   uint8_t z = opcode & 7;
+  uint8_t val = get_r8(cpu, z); /* initial value*/
+  uint8_t res; /* result*/
 
   switch (x) {
     case 0: { /*x=0*/
-      /*ROTATE*/
+      /* shift operations */
       switch (y) {
-        case 0: {
-          /*RLC*/
-          set_r8(cpu, z, rlc8(cpu, get_r8(cpu, z)));
-          cpu->cycles += (y == 6) ? 15 : 8;
-          break;
-        }
-        case 1: {
-          /*RRC*/
-          set_r8(cpu, z, rrc8(cpu, get_r8(cpu, z)));
-          cpu->cycles += (y == 6) ? 15 : 8;
-          break;
-        }
-        case 2: {
-          /*RL*/
-          set_r8(cpu, z, rl8(cpu, get_r8(cpu, z)));
-          cpu->cycles += (y == 6) ? 15 : 8;
-          break;
-        }
-        case 3: {
-          /*RR*/
-          set_r8(cpu, z, rr8(cpu, get_r8(cpu, z)));
-          cpu->cycles += (y == 6) ? 15 : 8;
-          break;
-        }
-        case 4: {
-          /*SLA*/
-          set_r8(cpu, z, sla8(cpu, get_r8(cpu, z)));
-          cpu->cycles += (y == 6) ? 15 : 8;
-          break;
-        }
-        case 5: {
-          /*SRA*/
-          set_r8(cpu, z, sra8(cpu, get_r8(cpu, z)));
-          cpu->cycles += (y == 6) ? 15 : 8;
-          break;
-        }
-        case 6: {
-          /*SLL*/
-          set_r8(cpu, z, sll8(cpu, get_r8(cpu, z)));
-          cpu->cycles += (y == 6) ? 15 : 8;
-          break;
-        }
-        case 7: {
-          /*SRL*/
-          set_r8(cpu, z, srl8(cpu, get_r8(cpu, z)));
-          cpu->cycles += (y == 6) ? 15 : 8;
-          break;
-        }
+        case 0: res = rlc8(cpu, val); break; /* RCL*/
+        case 1: res = rrc8(cpu, val); break; /* RRC*/
+        case 2: res = rl8(cpu, val); break; /* RL*/
+        case 3: res = rl8(cpu, val); break; /* RR*/
+        case 4: res = sla8(cpu, val); break; /* SLA*/
+        case 5: res = sra8(cpu, val); break; /* SRA*/
+        case 6: res = sll8(cpu, val); break; /* SLL*/
+        case 7: res = srl8(cpu, val); break; /* SRL*/
       }
       break;
     }
 
     case 1: { /*x=1*/
-      /* BIT*/
-      bit8(cpu, get_r8(cpu,z), y);
-      break;
+      /* bit operation*/
+      bit8(cpu, val, y);
+      return; /* no need to write back*/
     }
 
     case 2: { /*x=2*/
-      /* RES*/
-      set_r8(cpu, z, res8(cpu, get_r8(cpu, z), y));
+      /* res operation*/
+      res = res8(cpu, val, y);
       break;
     }
 
     case 3: { /*x=3*/
-      /*SET*/
-      set_r8(cpu, z, set8(cpu, get_r8(cpu, z), y));
+      /* set operation*/
+      res = set8(cpu, val, y);
       break;
     }
   }
+
+  set_r8(cpu, z, res);
+  cpu->cycles += (z == 6) ? 15 : 8;
 }
 
 void prefix_dd_fd(VirtZ80 *cpu, uint16_t *index_reg) {
@@ -1855,7 +1820,7 @@ void prefix_dd_fd(VirtZ80 *cpu, uint16_t *index_reg) {
 
         case 3: { /*z=3*/
           if (y==1) {
-            bit_instruction_index(cpu, index_reg);
+            prefix_cb_index(cpu, index_reg);
           } else if (y==4) {
             cpu->wz = *index_reg;
             *index_reg = mread16(cpu->sp);
@@ -1879,153 +1844,54 @@ void prefix_dd_fd(VirtZ80 *cpu, uint16_t *index_reg) {
 
 }
 
-void bit_instruction_index(VirtZ80 *cpu, uint16_t* index_reg) {
+void prefix_cb_index(VirtZ80 *cpu, uint16_t *index_reg) {
+  /* Bit instructions*/
   uint16_t addr = get_index_addr(cpu, *index_reg);
   uint8_t opcode = fByte(cpu);
-  switch (opcode) {
-    case 0x00: // RLC reg
-    case 0x01:
-    case 0x02:
-    case 0x03:
-    case 0x04:
-    case 0x05:
-    case 0x07:
-      cpu->regs[(opcode & 0x07)] = rlc8(cpu, mread8(addr));
-      cpu->cycles += 23;
-      break;
-    case 0x06: // RLC (i+d)
-      mwrite8(addr, rlc8(cpu, mread8(addr)));
-      cpu->cycles += 23;
-      break;
+  uint8_t x = opcode >> 6;
+  uint8_t y = (opcode >> 3) & 7;
+  uint8_t z = opcode & 7;
+  uint8_t val = mread8(addr);
+  uint8_t res;
 
-    case 0x08: // RRC reg
-    case 0x09:
-    case 0x0A:
-    case 0x0B:
-    case 0x0C:
-    case 0x0D:
-    case 0x0F:
-      cpu->regs[((opcode-8) & 0x07)] = rrc8(cpu, mread8(addr));
-      cpu->cycles += 23;
+  switch (x) {
+    case 0: { /*x=0*/
+      /* shift operations */
+      switch (y) {
+        case 0: res = rlc8(cpu, val); break; /* RCL*/
+        case 1: res = rrc8(cpu, val); break; /* RRC*/
+        case 2: res = rl8(cpu, val); break; /* RL*/
+        case 3: res = rl8(cpu, val); break; /* RR*/
+        case 4: res = sla8(cpu, val); break; /* SLA*/
+        case 5: res = sra8(cpu, val); break; /* SRA*/
+        case 6: res = sll8(cpu, val); break; /* SLL*/
+        case 7: res = srl8(cpu, val); break; /* SRL*/
+      }
       break;
-    case 0x0E: // RRC (i+d)
-      mwrite8(addr, rrc8(cpu, mread8(addr)));
-      cpu->cycles += 23;
-      break;
-    
-    case 0x10: // RL reg
-    case 0x11:
-    case 0x12:
-    case 0x13:
-    case 0x14:
-    case 0x15:
-    case 0x17:
-      cpu->regs[(opcode & 0x07)] = rl8(cpu, mread8(addr));
-      cpu->cycles += 23;
-      break;
-    case 0x16: // RL (i+d)
-      mwrite8(addr, rl8(cpu, mread8(addr)));
-      cpu->cycles += 23;
-      break;
+    }
 
-    case 0x18: // RR reg
-    case 0x19:
-    case 0x1A:
-    case 0x1B:
-    case 0x1C:
-    case 0x1D:
-    case 0x1F:
-      cpu->regs[((opcode-8) & 0x07)] = rr8(cpu, mread8(addr));
-      cpu->cycles += 23;
-      break;
-    case 0x1E: // RR (i+d)
-      mwrite8(addr, rr8(cpu, mread8(addr)));
-      cpu->cycles += 23;
-      break;
+    case 1: { /*x=1*/
+      /* bit operation*/
+      bit8(cpu, val, y);
+      cpu->cycles += 20;
+      return; /* no need to write back*/
+    }
 
-    case 0x20: // SLA reg
-    case 0x21:
-    case 0x22:
-    case 0x23:
-    case 0x24:
-    case 0x25:
-    case 0x27:
-      cpu->regs[(opcode & 0x07)] = sla8(cpu, mread8(addr));
-      cpu->cycles += 23;
+    case 2: { /*x=2*/
+      /* res operation*/
+      res = res8(cpu, val, y);
       break;
-    case 0x26: // SLA (i+d)
-      mwrite8(addr, sla8(cpu, mread8(addr)));
-      cpu->cycles += 23;
-      break;
+    }
 
-    case 0x28: // SRA reg
-    case 0x29:
-    case 0x2A:
-    case 0x2B:
-    case 0x2C:
-    case 0x2D:
-    case 0x2F:
-      cpu->regs[((opcode-8) & 0x07)] = sra8(cpu, mread8(addr));
-      cpu->cycles += 23;
+    case 3: { /*x=3*/
+      /* set operation*/
+      res = set8(cpu, val, y);
       break;
-    case 0x2E: // SRA (i+d)
-      mwrite8(addr, sra8(cpu, mread8(addr)));
-      cpu->cycles += 23;
-      break;
+    }
 
-    case 0x30: // SLL reg
-    case 0x31:
-    case 0x32:
-    case 0x33:
-    case 0x34:
-    case 0x35:
-    case 0x37:
-      cpu->regs[(opcode & 0x07)] = sll8(cpu, mread8(addr));
-      cpu->cycles += 23;
-      break;
-    case 0x36: // SLL (i+d)
-      mwrite8(addr, sll8(cpu, mread8(addr)));
-      cpu->cycles += 23;
-      break;
-
-    case 0x38: // SRL reg
-    case 0x39:
-    case 0x3A:
-    case 0x3B:
-    case 0x3C:
-    case 0x3D:
-    case 0x3F:
-      cpu->regs[((opcode-8) & 0x07)] = srl8(cpu, mread8(addr));
-      cpu->cycles += 23;
-      break;
-    case 0x3E: // SRL (i+d)
-      mwrite8(addr, srl8(cpu, mread8(addr)));
-      cpu->cycles += 23;
-      break;
-    default:
-      break;
-  }
-  if (opcode >= 0x40 && opcode <= 0x7F) { /* BIT */
-    uint8_t bit = (opcode >> 3) & 0x07;
-    
-    bit8(cpu, mread8(addr), bit);
-
-    cpu->cycles += 20;
-
-  } else if (opcode >= 0x80 && opcode <= 0xBF) { /* RES*/
-    uint8_t bit = (opcode >> 3) & 0x07;
-    
-    mwrite8(addr,res8(cpu, mread8(addr), bit));
-
+    mwrite8(addr, res);
+    if (z != 6) set_r8(cpu, z, res); /* undocumented register copy*/
     cpu->cycles += 23;
-
-  } else if (opcode >= 0xC0 && opcode <= 0xFF) { /* SET*/
-    uint8_t bit = (opcode >> 3) & 0x07;
-
-    mwrite8(addr,set8(cpu, mread8(addr), bit));
-
-    cpu->cycles += 23;
-
   }
 }
 
